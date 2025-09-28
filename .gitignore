@@ -1,4 +1,14 @@
+# 가상환경
 .venv/
 venv/
+
+# 캐시 파일
 __pycache__/
 *.pyc
+
+# 환경 변수
+.env
+
+# IDE 설정 (선택)
+.vscode/
+.idea/
