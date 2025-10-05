@@ -1,44 +1,65 @@
-from db import get_connection
-from models import SaleCreateIn, SaleCreateOut, InventoryRow, AlertRow
+from backend.db import get_connection
+from backend.models import SaleCreateIn, SaleCreateOut, InventoryRow, AlertRow
 import uuid
 
 INSUFFICIENT_ERR = "INSUFFICIENT_STOCK"
 
 # ✅ 재고 조회
-def list_inventory(location_id: str | None = None) -> list[InventoryRow]:
-    conn = get_connection()
-    cur = conn.cursor()
-    query = """
-        SELECT 
-            i.ingredient_id,
-            ing.name AS ingredient_name,
-            l.name AS location_name,
-            i.qty_on_hand,
-            i.reorder_point,
-            i.safety_stock
-        FROM inventory i
-        JOIN ingredients ing ON i.ingredient_id = ing.id
-        JOIN locations l ON i.location_id = l.id
+# 맨 위에 필요한 import (없으면 추가)
+import psycopg2.extras
+from .db import get_connection  # 절대/상대 중 프로젝트에서 쓰는 방식 유지
+
+def list_inventory(location_id: str | None = None) -> list[dict]:
     """
-    if location_id:
-        query += " WHERE i.location_id = %s"
-        cur.execute(query, (location_id,))
-    else:
-        cur.execute(query)
+    재고 스냅샷 조회. location_id가 있으면 해당 위치만 필터.
+    """
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if location_id:
+                cur.execute(
+                    """
+                    SELECT
+                        inv.ingredient_id::text,
+                        inv.location_id::text,
+                        ing.name         AS ingredient,
+                        loc.name         AS location,
+                        COALESCE(inv.qty_on_hand, 0) AS qty,
+                        inv.reorder_point,
+                        inv.safety_stock,
+                        ing.unit_id::text AS unit_id,
+                        u.name            AS unit
+                    FROM inventory inv
+                    JOIN ingredients ing ON ing.id = inv.ingredient_id
+                    JOIN locations   loc ON loc.id = inv.location_id
+                    LEFT JOIN units  u   ON u.id = ing.unit_id
+                    WHERE inv.location_id = %s
+                    ORDER BY ing.name;
+                    """,
+                    (location_id,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT
+                        inv.ingredient_id::text,
+                        inv.location_id::text,
+                        ing.name         AS ingredient,
+                        loc.name         AS location,
+                        COALESCE(inv.qty_on_hand, 0) AS qty,
+                        inv.reorder_point,
+                        inv.safety_stock,
+                        ing.unit_id::text AS unit_id,
+                        u.name            AS unit
+                    FROM inventory inv
+                    JOIN ingredients ing ON ing.id = inv.ingredient_id
+                    JOIN locations   loc ON loc.id = inv.location_id
+                    LEFT JOIN units  u   ON u.id = ing.unit_id
+                    ORDER BY loc.name, ing.name;
+                    """
+                )
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
 
-    rows = cur.fetchall()
-    conn.close()
-
-    return [
-        InventoryRow(
-            ingredient_id=row[0],
-            ingredient_name=row[1],
-            location_name=row[2],
-            qty_on_hand=row[3],
-            reorder_point=row[4],
-            safety_stock=row[5]
-        ) for row in rows
-    ]
 
 
 # ✅ 알림 조회
@@ -98,8 +119,8 @@ def create_sale(payload: SaleCreateIn) -> SaleCreateOut:
     return SaleCreateOut(sale_id=sale_id, total_amount=total_amount)
 
 # ====== STEP1 services ======
-from .db import get_connection
-from .models import (
+from backend.db import get_connection
+from backend.models import (
     StockChangeIn, StockChangeOut, InventoryTxRow,
     POCreateIn, POCreateOut, POItemAddIn, POReceiveIn, POReceiveOut
 )
@@ -243,7 +264,7 @@ def receive_purchase_order(inp: POReceiveIn) -> POReceiveOut:
     return POReceiveOut(purchase_order_id=inp.purchase_order_id, received_count=received, status=new_status)
 
 # ====== STEP2 services ======
-from .models import (
+from backend.models import (
     CategoryRow, UnitRow, LocationRow, IngredientRow,
     MenuItemCreate, MenuItemUpdate, MenuItemRow,
     RecipeRow, RecipeUpsert,
@@ -400,7 +421,7 @@ def deactivate_supplier(supplier_id: str) -> dict:
     conn.commit(); conn.close(); return {"ok": True}
 
 # ====== STEP3 services ======
-from .models import (
+from backend.models import (
     TransferCreate, TransferRow, TransferItemAdd, TransferItemRow, TransferAction,
     AuditLogRow
 )
