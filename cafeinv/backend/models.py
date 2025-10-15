@@ -22,12 +22,21 @@ class InventoryRow(BaseModel):
     safety_stock: float
 
 # 알림 조회 응답
+from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional
+
 class AlertRow(BaseModel):
-    ingredient_name: str
-    location_name: str
-    type: str
+    id: str
+    alert_type: str
     message: str
-    created_at: str
+    severity: str
+    created_at: datetime
+    ingredient_id: Optional[str] = None
+    ingredient_name: Optional[str] = None
+    location_id: Optional[str] = None
+    location_name: Optional[str] = None
+
 
     # ====== STEP1: stock change / tx history / purchase order ======
 from typing import Optional, Literal
