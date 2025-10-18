@@ -1,5 +1,6 @@
 # 환경/빌드 폴더
 .venv/
+venv/
 __pycache__/
 .vscode/
 .idea/
