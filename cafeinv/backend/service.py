@@ -1,75 +1,154 @@
-from db import get_connection
-from models import SaleCreateIn, SaleCreateOut, InventoryRow, AlertRow
+from backend.db import get_connection
+from backend.models import SaleCreateIn, SaleCreateOut, InventoryRow, AlertRow
 import uuid
 
 INSUFFICIENT_ERR = "INSUFFICIENT_STOCK"
 
 # ✅ 재고 조회
-def list_inventory(location_id: str | None = None) -> list[InventoryRow]:
-    conn = get_connection()
-    cur = conn.cursor()
-    query = """
-        SELECT 
-            i.ingredient_id,
-            ing.name AS ingredient_name,
-            l.name AS location_name,
-            i.qty_on_hand,
-            i.reorder_point,
-            i.safety_stock
-        FROM inventory i
-        JOIN ingredients ing ON i.ingredient_id = ing.id
-        JOIN locations l ON i.location_id = l.id
+# 맨 위에 필요한 import (없으면 추가)
+import psycopg2.extras
+from .db import get_connection  # 절대/상대 중 프로젝트에서 쓰는 방식 유지
+
+def list_inventory(location_id: str | None = None) -> list[dict]:
     """
-    if location_id:
-        query += " WHERE i.location_id = %s"
-        cur.execute(query, (location_id,))
-    else:
-        cur.execute(query)
+    재고 스냅샷 조회. location_id가 있으면 해당 위치만 필터.
+    """
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if location_id:
+                cur.execute(
+                    """
+                    SELECT
+                        inv.ingredient_id::text,
+                        inv.location_id::text,
+                        ing.name         AS ingredient,
+                        loc.name         AS location,
+                        COALESCE(inv.qty_on_hand, 0) AS qty,
+                        inv.reorder_point,
+                        inv.safety_stock,
+                        ing.unit_id::text AS unit_id,
+                        u.name            AS unit
+                    FROM inventory inv
+                    JOIN ingredients ing ON ing.id = inv.ingredient_id
+                    JOIN locations   loc ON loc.id = inv.location_id
+                    LEFT JOIN units  u   ON u.id = ing.unit_id
+                    WHERE inv.location_id = %s
+                    ORDER BY ing.name;
+                    """,
+                    (location_id,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT
+                        inv.ingredient_id::text,
+                        inv.location_id::text,
+                        ing.name         AS ingredient,
+                        loc.name         AS location,
+                        COALESCE(inv.qty_on_hand, 0) AS qty,
+                        inv.reorder_point,
+                        inv.safety_stock,
+                        ing.unit_id::text AS unit_id,
+                        u.name            AS unit
+                    FROM inventory inv
+                    JOIN ingredients ing ON ing.id = inv.ingredient_id
+                    JOIN locations   loc ON loc.id = inv.location_id
+                    LEFT JOIN units  u   ON u.id = ing.unit_id
+                    ORDER BY loc.name, ing.name;
+                    """
+                )
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
 
-    rows = cur.fetchall()
-    conn.close()
-
-    return [
-        InventoryRow(
-            ingredient_id=row[0],
-            ingredient_name=row[1],
-            location_name=row[2],
-            qty_on_hand=row[3],
-            reorder_point=row[4],
-            safety_stock=row[5]
-        ) for row in rows
-    ]
 
 
 # ✅ 알림 조회
-def list_alerts() -> list[AlertRow]:
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT 
-            ing.name AS ingredient_name,
-            l.name AS location_name,
-            a.type,
-            a.message,
-            a.created_at
-        FROM alerts a
-        JOIN ingredients ing ON a.ingredient_id = ing.id
-        JOIN locations l ON a.location_id = l.id
-        WHERE a.resolved_at IS NULL
-        ORDER BY a.created_at DESC
-    """)
-    rows = cur.fetchall()
-    conn.close()
+from psycopg2.extras import RealDictCursor
 
-    return [
-        AlertRow(
-            ingredient_name=row[0],
-            location_name=row[1],
-            type=row[2],
-            message=row[3],
-            created_at=str(row[4])
-        ) for row in rows
+def list_alerts():
+    # 1) alerts 테이블 컬럼 셋 파악
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='alerts';
+            """)
+            cols = {r[0] for r in cur.fetchall()}
+
+    # 2) 존재하는 컬럼에 맞춰 표현식 준비
+    id_expr         = "a.id::text" if "id" in cols else "gen_random_uuid()::text"
+    type_expr       = "a.alert_type" if "alert_type" in cols else ("a.type" if "type" in cols else "'generic'")
+    severity_expr   = "a.severity" if "severity" in cols else ("a.level" if "level" in cols else "'info'")
+    message_expr    = "a.message" if "message" in cols else ("a.msg" if "msg" in cols else "''")
+    created_at_expr = "a.created_at" if "created_at" in cols else ("a.createdon" if "createdon" in cols else "now()")
+
+    has_ing_id = "ingredient_id" in cols
+    has_loc_id = "location_id"   in cols
+
+    # 3) SELECT 컬럼 목록을 리스트로 만들고 join
+    select_cols = [
+        f"{id_expr} AS id",
+        f"{type_expr} AS alert_type",
+        f"{message_expr} AS message",
+        f"{severity_expr} AS severity",
+        f"{created_at_expr} AS created_at",
     ]
+    if has_ing_id:
+        select_cols += [
+            "a.ingredient_id::text AS ingredient_id",
+            "ing.name AS ingredient_name",
+        ]
+    else:
+        select_cols += [
+            "NULL::text AS ingredient_id",
+            "NULL::text AS ingredient_name",
+        ]
+    if has_loc_id:
+        select_cols += [
+            "a.location_id::text AS location_id",
+            "loc.name AS location_name",
+        ]
+    else:
+        select_cols += [
+            "NULL::text AS location_id",
+            "NULL::text AS location_name",
+        ]
+
+    select_sql = ",\n                ".join(select_cols)
+
+    # 4) JOIN도 조건부로
+    join_ing = "LEFT JOIN ingredients ing ON ing.id::text = a.ingredient_id::text" if has_ing_id else ""
+    join_loc = "LEFT JOIN locations   loc ON loc.id::text = a.location_id::text"   if has_loc_id else ""
+
+    sql = f"""
+        SELECT
+                {select_sql}
+        FROM alerts a
+        {join_ing}
+        {join_loc}
+        ORDER BY {created_at_expr} DESC
+        LIMIT 200;
+    """
+
+    # 5) 실행 및 모델 매핑
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql)
+            rows = cur.fetchall() or []
+            return [AlertRow(**{
+                "id": r.get("id"),
+                "alert_type": r.get("alert_type"),
+                "message": r.get("message"),
+                "severity": r.get("severity"),
+                "created_at": r.get("created_at"),
+                "ingredient_id": r.get("ingredient_id"),
+                "ingredient_name": r.get("ingredient_name"),
+                "location_id": r.get("location_id"),
+                "location_name": r.get("location_name"),
+            }) for r in rows]
+
+
 
 
 # ✅ 판매 등록 → 트리거 작동 → 재고 차감
@@ -98,8 +177,8 @@ def create_sale(payload: SaleCreateIn) -> SaleCreateOut:
     return SaleCreateOut(sale_id=sale_id, total_amount=total_amount)
 
 # ====== STEP1 services ======
-from .db import get_connection
-from .models import (
+from backend.db import get_connection
+from backend.models import (
     StockChangeIn, StockChangeOut, InventoryTxRow,
     POCreateIn, POCreateOut, POItemAddIn, POReceiveIn, POReceiveOut
 )
@@ -243,7 +322,7 @@ def receive_purchase_order(inp: POReceiveIn) -> POReceiveOut:
     return POReceiveOut(purchase_order_id=inp.purchase_order_id, received_count=received, status=new_status)
 
 # ====== STEP2 services ======
-from .models import (
+from backend.models import (
     CategoryRow, UnitRow, LocationRow, IngredientRow,
     MenuItemCreate, MenuItemUpdate, MenuItemRow,
     RecipeRow, RecipeUpsert,
@@ -400,7 +479,7 @@ def deactivate_supplier(supplier_id: str) -> dict:
     conn.commit(); conn.close(); return {"ok": True}
 
 # ====== STEP3 services ======
-from .models import (
+from backend.models import (
     TransferCreate, TransferRow, TransferItemAdd, TransferItemRow, TransferAction,
     AuditLogRow
 )
