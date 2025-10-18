@@ -577,3 +577,211 @@ with tab_audit:
         if err: st.error(err); data=[]
         df = pd.DataFrame(data)
         st.dataframe(df if not df.empty else pd.DataFrame([{"info":"로그 없음"}]), use_container_width=True)
+
+# =========================
+# 등록 탭: 카테고리 / 품목 / 입고
+# =========================
+tab_reg_cat, tab_reg_item, tab_receipt = st.tabs(["카테고리 등록", "품목 등록", "입고 등록"])
+
+# --- 카테고리 등록 ---
+with tab_reg_cat:
+    st.subheader("카테고리 등록")
+    with st.form("cat_form"):
+        cat_name = st.text_input("카테고리명", "")
+        cat_type = st.selectbox("타입", ["ingredient", "menu"], index=0)
+        sub_cat = st.form_submit_button("등록")
+    if sub_cat:
+        if not cat_name.strip():
+            st.warning("카테고리명을 입력하세요.")
+        else:
+            resp, err = api_post("/categories", {"name": cat_name.strip(), "type": cat_type})
+            if err: st.error(err)
+            else: st.success(f"등록됨: {resp['name']} ({resp['type']})")
+
+    st.divider()
+    st.caption("기존 카테고리")
+    data, err = api_get("/categories")
+    if err: st.error(err); data=[]
+    st.dataframe(pd.DataFrame(data), use_container_width=True)
+
+# --- 품목(원재료) 등록 ---
+with tab_reg_item:
+    st.subheader("품목(원재료) 등록")
+
+    # 참조 로드
+    units, _ = api_get("/ref/units"); units = units or []
+    cats, _  = api_get("/categories?type=ingredient"); cats = cats or []
+    users, _ = api_get("/ref/users"); users = users or []
+
+    unit_map = {f"{u['name']} ({u['base']})": u["id"] for u in units}
+    cat_map  = {c["name"]: c["id"] for c in cats}
+    user_map = {u["name"]: u["id"] for u in users}
+
+    with st.form("ing_form"):
+        name = st.text_input("품목명", "")
+        col1, col2 = st.columns(2)
+        with col1:
+            cat_sel = st.selectbox("카테고리", ["(선택안함)"] + list(cat_map.keys()))
+            unit_sel = st.selectbox("단위", list(unit_map.keys()) or ["단위 없음(먼저 등록)"])
+            ss = st.number_input("안전재고 기본값", min_value=0.0, value=0.0, step=1.0)
+        with col2:
+            rp = st.number_input("재주문점 기본값", min_value=0.0, value=0.0, step=1.0)
+            resp_user = st.selectbox("담당자", ["(선택안함)"] + list(user_map.keys()))
+            cost = st.number_input("단가(옵션)", min_value=0.0, value=0.0, step=0.1)
+        desc = st.text_area("설명", "")
+
+        sub_ing = st.form_submit_button("등록")
+    if sub_ing:
+        if not name.strip():
+            st.warning("품목명을 입력하세요.")
+        elif not unit_map:
+            st.error("단위가 없습니다. 먼저 단위를 등록하세요.")
+        else:
+            payload = {
+                "name": name.strip(),
+                "unit_id": unit_map.get(unit_sel),
+                "category_id": cat_map.get(cat_sel) if cat_sel in cat_map else None,
+                "description": desc or None,
+                "safety_stock_default": ss,
+                "reorder_point_default": rp,
+                "responsible_user_id": user_map.get(resp_user) if resp_user in user_map else None,
+                "cost_per_unit": cost,
+            }
+            resp, err = api_post("/ingredients", payload)
+            if err: st.error(err)
+            else: st.success(f"등록됨: {resp['name']} (id={resp['id']})")
+
+# --- 입고 등록 (헤더+아이템) ---
+with tab_receipt:
+    st.subheader("입고 등록")
+
+    # 참조 로드
+    locs, _  = api_get("/ref/locations"); locs = locs or []
+    sups, _  = api_get("/ref/suppliers"); sups = sups or []
+    ings, _  = api_get("/ref/ingredients"); ings = ings or []
+    users, _ = api_get("/ref/users"); users = users or []
+
+    loc_map = {l["name"]: l["id"] for l in locs}
+    sup_map = {s["name"]: s["id"] for s in sups}
+    ing_map = {i["name"]: i["id"] for i in ings}
+    user_map = {u["name"]: u["id"] for u in users}
+
+    with st.form("rcp_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            loc_sel = st.selectbox("입고 위치", list(loc_map.keys()) or ["(위치 없음)"])
+            sup_sel = st.selectbox("공급사(옵션)", ["(없음)"] + list(sup_map.keys()))
+            note = st.text_input("비고", "")
+        with col2:
+            recv_at = st.text_input("입고일시(ISO, 빈칸=지금)", "")
+
+        st.markdown("#### 입고 품목")
+        # 한 번에 여러 행 입력하기 위한 간단한 입력 UI
+        rows = st.number_input("입력 행 수", min_value=1, value=1, step=1)
+        items = []
+        for idx in range(rows):
+            st.write(f"행 {idx+1}")
+            c1, c2, c3, c4, c5 = st.columns([2,1,1.3,1.5,1.5])
+            with c1:
+                ing_sel = st.selectbox("품목", list(ing_map.keys()) or ["(품목 없음)"], key=f"ri_ing_{idx}")
+            with c2:
+                qty = st.number_input("수량", min_value=0.0, value=0.0, step=1.0, key=f"ri_qty_{idx}")
+            with c3:
+                ucost = st.number_input("단가", min_value=0.0, value=0.0, step=0.1, key=f"ri_uc_{idx}")
+            with c4:
+                exp = st.text_input("유통기한(YYYY-MM-DD)", value="", key=f"ri_exp_{idx}")
+            with c5:
+                lot = st.text_input("로트", value="", key=f"ri_lot_{idx}")
+            if ing_sel in ing_map and qty > 0:
+                items.append({
+                    "ingredient_id": ing_map[ing_sel],
+                    "qty": qty,
+                    "unit_cost": ucost or None,
+                    "expiry_date": exp or None,
+                    "lot_code": lot or None
+                })
+
+        created_by = st.selectbox("작성자(옵션)", ["(없음)"] + list(user_map.keys()))
+        sub_rcp = st.form_submit_button("입고 등록")
+
+    if sub_rcp:
+        if not loc_map:
+            st.error("위치가 없습니다. 먼저 위치를 등록하세요.")
+        elif not items:
+            st.warning("유효한 입고 품목이 없습니다(수량>0 필요).")
+        else:
+            payload = {
+                "supplier_id": sup_map.get(sup_sel) if sup_sel in sup_map else None,
+                "location_id": loc_map[list(loc_map.keys())[0]] if not loc_sel else loc_map.get(loc_sel),
+                "received_at": recv_at.strip() or None,
+                "note": note or None,
+                "created_by": user_map.get(created_by) if created_by in user_map else None,
+                "items": items
+            }
+            resp, err = api_post("/receipts", payload)
+            if err: st.error(err)
+            else:
+                st.success(f"입고 등록 완료: receipt_id={resp['receipt_id']}")
+
+import streamlit as st
+import pandas as pd
+import requests
+import os
+
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+
+st.set_page_config(page_title="Cafe Inventory System", layout="wide")
+
+# -----------------------
+# 사이드 메뉴
+# -----------------------
+menu = st.sidebar.radio(
+    "메뉴 선택",
+    ["대시보드", "품목 마스터 조회", "재고 현황 조회", "입고 내역 조회"]
+)
+
+# 품목 마스터 조회
+if menu == "품목 마스터 조회":
+    st.header("📦 품목 마스터 조회")
+    try:
+        res = requests.get(f"{API_URL}/items")
+        if res.status_code == 200:
+            df = pd.DataFrame(res.json())
+            st.dataframe(df)
+        else:
+            st.error("❌ 품목 정보를 불러올 수 없습니다.")
+    except Exception as e:
+        st.error(f"에러: {e}")
+
+# 재고 현황 조회
+elif menu == "재고 현황 조회":
+    st.header("📊 재고 현황 조회")
+    try:
+        res = requests.get(f"{API_URL}/inventory")
+        if res.status_code == 200:
+            df = pd.DataFrame(res.json())
+            if not df.empty:
+                if "safe_stock" in df.columns:
+                    df["부족 여부"] = df.apply(
+                        lambda r: "⚠️ 부족" if r["qty"] < r["safe_stock"] else "✅ 정상", axis=1
+                    )
+                st.dataframe(df)
+            else:
+                st.info("데이터가 없습니다.")
+        else:
+            st.error("❌ 재고 정보를 불러올 수 없습니다.")
+    except Exception as e:
+        st.error(f"에러: {e}")
+
+# 입고 내역 조회
+elif menu == "입고 내역 조회":
+    st.header("📥 입고 내역 조회")
+    try:
+        res = requests.get(f"{API_URL}/purchase_orders")
+        if res.status_code == 200:
+            df = pd.DataFrame(res.json())
+            st.dataframe(df)
+        else:
+            st.error("❌ 입고 내역을 불러올 수 없습니다.")
+    except Exception as e:
+        st.error(f"에러: {e}")
