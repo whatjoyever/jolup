@@ -1,0 +1,28 @@
+# 환경/빌드 폴더
+.venv/
+__pycache__/
+.vscode/
+.idea/
+node_modules/
+*.log
+*.tmp
+*.sqlite3
+*.db
+
+# OS / IDE 임시 파일
+.DS_Store
+Thumbs.db
+
+# OneDrive 캐시 폴더
+*.lnk
+*.tmp
+*.ini
+~$*
+
+# Python cache
+*.pyc
+*.pyo
+*.pyd
+
+# 기타
+.env
