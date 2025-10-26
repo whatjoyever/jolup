@@ -2,6 +2,16 @@ import os
 import streamlit as st
 from dotenv import load_dotenv
 import requests
+import os, sys
+import streamlit as st
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+if FRONTEND_DIR not in sys.path:
+    sys.path.insert(0, FRONTEND_DIR)
+
+from sidebar import render_sidebar   # ✅ 여기
+
 
 # -----------------------------
 # 환경 설정
