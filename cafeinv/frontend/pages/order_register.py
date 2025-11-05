@@ -67,28 +67,34 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 # -------------------------------
 st.subheader("발주 등록")
 
-# 품목 검색
-search_col1, search_col2 = st.columns([2, 1])
-with search_col1:
-    st.caption("품목 검색")
-    product_search = st.text_input("품목 검색", key="order_register_product_search",
-                                   label_visibility="collapsed", placeholder="품목명 입력")
-with search_col2:
-    st.markdown("<div style='height: 37px'></div>", unsafe_allow_html=True)
-    if st.button("검색", key="order_register_search_btn", use_container_width=True):
-        if product_search:
-            st.session_state.receive_search_results = [
-                p for p in st.session_state.products if product_search.lower() in p.get("name", "").lower()
-            ]
+# 품목 검색 (Form 형태)
+st.markdown("### 🔍 검색")
+with st.form("order_register_search_form", clear_on_submit=False):
+    st.caption("품목명 또는 코드번호로 검색 가능")
+    product_search = st.text_input("검색", key="order_register_product_search",
+                                   label_visibility="collapsed", 
+                                   placeholder="품목명 또는 코드번호로 검색 가능")
+    search_submitted = st.form_submit_button("검색", use_container_width=True, type="primary")
+    
+    # 검색어를 session_state에 저장
+    if search_submitted:
+        if product_search and product_search.strip():
+            st.session_state.order_register_search_term = product_search.strip()
         else:
-            st.session_state.receive_search_results = st.session_state.products
+            st.session_state.order_register_search_term = ""
 
-# 입력 변화에 따른 즉시 필터
-if product_search:
+# 검색어 초기화 (세션 상태에 없으면)
+if "order_register_search_term" not in st.session_state:
+    st.session_state.order_register_search_term = ""
+
+# 검색 필터링
+if st.session_state.order_register_search_term:
+    search_term = st.session_state.order_register_search_term.lower()
     st.session_state.receive_search_results = [
-        p for p in st.session_state.products if product_search.lower() in p.get("name", "").lower()
+        p for p in st.session_state.products 
+        if search_term in p.get("name", "").lower() or search_term in p.get("code", "").lower()
     ]
-elif not product_search and len(st.session_state.products) > 0:
+else:
     st.session_state.receive_search_results = st.session_state.products
 
 # 검색 결과 표시

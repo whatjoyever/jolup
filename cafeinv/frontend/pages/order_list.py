@@ -59,23 +59,35 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 # -------------------------------
 # 발주 내역 검색
 # -------------------------------
-st.subheader("발주 내역 검색")
+# 검색 섹션 (Form 형태)
+st.markdown("### 🔍 검색")
+with st.form("order_list_search_form", clear_on_submit=False):
+    st.caption("품목명, 카테고리명, 발주일로 검색 가능")
+    search_query = st.text_input("검색", key="order_list_search",
+                                 label_visibility="collapsed", 
+                                 placeholder="품목명, 카테고리명, 또는 발주일(YYYY-MM-DD) 입력")
+    search_submitted = st.form_submit_button("검색", use_container_width=True, type="primary")
+    
+    # 검색어를 session_state에 저장
+    if search_submitted:
+        if search_query and search_query.strip():
+            st.session_state.order_list_search_term = search_query.strip()
+        else:
+            st.session_state.order_list_search_term = ""
 
-# 통합 검색창
-st.caption("품목명, 카테고리명, 발주일로 검색")
-search_query = st.text_input("검색", key="order_list_search",
-                             label_visibility="collapsed", 
-                             placeholder="품목명, 카테고리명, 또는 발주일(YYYY-MM-DD) 입력")
+# 검색어 초기화 (세션 상태에 없으면)
+if "order_list_search_term" not in st.session_state:
+    st.session_state.order_list_search_term = ""
 
 # 통합 검색 필터링 (품목명, 카테고리명, 발주일 중 하나라도 매칭되면 표시)
 filtered_receives = list(st.session_state.receives)
-if search_query:
-    search_lower = search_query.lower().strip()
+if st.session_state.order_list_search_term:
+    search_lower = st.session_state.order_list_search_term.lower().strip()
     filtered_receives = [
         r for r in filtered_receives 
         if (search_lower in r.get("product_name", "").lower() or
             search_lower in r.get("category", "").lower() or
-            search_query in r.get("date", ""))
+            st.session_state.order_list_search_term in r.get("date", ""))
     ]
 
 st.markdown("---")
@@ -271,7 +283,7 @@ with st.form("order_list_form"):
         st.warning("검색 결과가 없습니다")
         st.form_submit_button("", use_container_width=True, help="")
     else:
-        if search_query:
+        if st.session_state.order_list_search_term:
             st.write(f"검색 결과: {len(filtered_receives)}개")
 
         h1, h2, h3, h4, h5, h6, h7, h8, h9, h10 = st.columns([0.8, 1.5, 2, 1.5, 1.2, 1.5, 1.5, 1.2, 1.5, 1.5])

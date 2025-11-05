@@ -47,6 +47,38 @@ st.markdown("""
         color: white;
     }
 </style>
+<script>
+    // 탭 상태 유지를 위한 JavaScript
+    window.addEventListener('load', function() {
+        const savedTab = sessionStorage.getItem('info_register_tab');
+        if (savedTab !== null) {
+            const tabIndex = parseInt(savedTab);
+            setTimeout(function() {
+                // Streamlit 탭 버튼 찾기 (여러 방법 시도)
+                let tabs = document.querySelectorAll('button[data-baseweb="tab"]');
+                if (!tabs || tabs.length === 0) {
+                    tabs = document.querySelectorAll('[role="tab"]');
+                }
+                if (!tabs || tabs.length === 0) {
+                    tabs = document.querySelectorAll('div[data-testid="stTabs"] button');
+                }
+                if (tabs && tabs[tabIndex]) {
+                    tabs[tabIndex].click();
+                }
+            }, 300);
+        }
+        
+        // 탭 클릭 시 sessionStorage 업데이트
+        setTimeout(function() {
+            const tabButtons = document.querySelectorAll('button[data-baseweb="tab"], [role="tab"], div[data-testid="stTabs"] button');
+            tabButtons.forEach(function(btn, index) {
+                btn.addEventListener('click', function() {
+                    sessionStorage.setItem('info_register_tab', index.toString());
+                });
+            });
+        }, 500);
+    });
+</script>
 """, unsafe_allow_html=True)
 
 # -------------------------------
@@ -77,6 +109,20 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 # -------------------------------
 # 탭 구조
 # -------------------------------
+# 현재 탭을 session_state에 저장하여 rerun 후에도 유지
+if "current_tab" not in st.session_state:
+    st.session_state.current_tab = 0
+
+# 최근 등록 항목을 저장할 session_state
+if "last_registered_category" not in st.session_state:
+    st.session_state.last_registered_category = None
+if "last_registered_product" not in st.session_state:
+    st.session_state.last_registered_product = None
+if "last_registered_partner" not in st.session_state:
+    st.session_state.last_registered_partner = None
+if "last_registered_admin" not in st.session_state:
+    st.session_state.last_registered_admin = None
+
 category_tab, product_tab, partner_tab, admin_tab = st.tabs(
     ["카테고리 등록", "품목 등록", "거래처 등록", "관리자 등록"]
 )
@@ -106,14 +152,34 @@ with category_tab:
             elif any(c["code"] == code for c in st.session_state.categories):
                 st.error("이미 존재하는 코드번호입니다.")
             else:
-                st.session_state.categories.append({"code": code, "name": name})
+                new_category = {"code": code, "name": name}
+                st.session_state.categories.append(new_category)
+                st.session_state.last_registered_category = new_category
+                st.session_state.current_tab = 0  # 카테고리 탭 유지
                 st.session_state.category_success = True
+                # 탭 상태를 sessionStorage에 저장
+                st.markdown("""
+                <script>
+                    sessionStorage.setItem('info_register_tab', '0');
+                </script>
+                """, unsafe_allow_html=True)
                 st.rerun()
     
     # 성공 메시지 표시
     if st.session_state.get("category_success", False):
         st.success("✅ 카테고리가 성공적으로 등록되었습니다!")
         st.session_state.category_success = False
+    
+    # 최근 등록한 카테고리 표시
+    if st.session_state.last_registered_category:
+        st.markdown("---")
+        st.markdown("#### 📋 최근 등록한 카테고리")
+        last_cat = st.session_state.last_registered_category
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**코드번호:** {last_cat.get('code', '-')}")
+        with col2:
+            st.write(f"**카테고리명:** {last_cat.get('name', '-')}")
 
 # -------------------------------
 # 품목 등록 탭
@@ -152,7 +218,7 @@ with product_tab:
         r2c1, r2c2, r2c3, r2c4 = st.columns([2, 2, 2, 1])
         with r2c1:
             st.caption("입고 단위")
-            unit_options = ["병", "박스", "kg", "갯수", "기타"]
+            unit_options = ["병", "박스", "kg", "g", "ml", "L", "봉투", "컵", "스푼", "갯수", "기타"]
             default_unit_index = unit_options.index(default_unit) if default_unit in unit_options else 0
             pr_unit = st.selectbox("입고 단위", options=unit_options, index=default_unit_index,
                                    key="prod_unit_select", label_visibility="collapsed")
@@ -182,17 +248,41 @@ with product_tab:
                 if any(p["code"] == code for p in st.session_state.products):
                     st.error("이미 존재하는 코드번호입니다.")
                 else:
-                    st.session_state.products.append({
+                    new_product = {
                         "code": code, "category": cat, "name": name, "unit": unit,
                         "status": pr_status, "safety": int(pr_safety)
-                    })
+                    }
+                    st.session_state.products.append(new_product)
+                    st.session_state.last_registered_product = new_product
+                    st.session_state.current_tab = 1  # 품목 탭 유지
                     st.session_state.product_success = True
+                    # 탭 상태를 sessionStorage에 저장
+                    st.markdown("""
+                    <script>
+                        sessionStorage.setItem('info_register_tab', '1');
+                    </script>
+                    """, unsafe_allow_html=True)
                     st.rerun()
     
     # 성공 메시지 표시
     if st.session_state.get("product_success", False):
         st.success("✅ 품목이 성공적으로 등록되었습니다!")
         st.session_state.product_success = False
+    
+    # 최근 등록한 품목 표시
+    if st.session_state.last_registered_product:
+        st.markdown("---")
+        st.markdown("#### 📋 최근 등록한 품목")
+        last_prod = st.session_state.last_registered_product
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.write(f"**코드번호:** {last_prod.get('code', '-')}")
+        with col2:
+            st.write(f"**품목명:** {last_prod.get('name', '-')}")
+        with col3:
+            st.write(f"**카테고리:** {last_prod.get('category', '-')}")
+        with col4:
+            st.write(f"**단위:** {last_prod.get('unit', '-')}")
 
 # -------------------------------
 # 거래처 등록 탭
@@ -231,17 +321,41 @@ with partner_tab:
             elif p_rep and not re.match(r'^[가-힣a-zA-Z\s]+$', p_rep):
                 st.error("대표자 이름은 한글과 영문만 입력 가능합니다.")
             else:
-                st.session_state.partners.append({
+                new_partner = {
                     "code": p_code, "name": p_name, "business_number": p_bus,
                     "representative": p_rep, "address": p_addr
-                })
+                }
+                st.session_state.partners.append(new_partner)
+                st.session_state.last_registered_partner = new_partner
+                st.session_state.current_tab = 2  # 거래처 탭 유지
                 st.session_state.partner_success = True
+                # 탭 상태를 sessionStorage에 저장
+                st.markdown("""
+                <script>
+                    sessionStorage.setItem('info_register_tab', '2');
+                </script>
+                """, unsafe_allow_html=True)
                 st.rerun()
     
     # 성공 메시지 표시
     if st.session_state.get("partner_success", False):
         st.success("✅ 거래처가 성공적으로 등록되었습니다!")
         st.session_state.partner_success = False
+    
+    # 최근 등록한 거래처 표시
+    if st.session_state.last_registered_partner:
+        st.markdown("---")
+        st.markdown("#### 📋 최근 등록한 거래처")
+        last_part = st.session_state.last_registered_partner
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.write(f"**거래처 코드:** {last_part.get('code', '-')}")
+            st.write(f"**거래처명:** {last_part.get('name', '-')}")
+        with col2:
+            st.write(f"**사업자번호:** {last_part.get('business_number', '-')}")
+            st.write(f"**대표자:** {last_part.get('representative', '-')}")
+        with col3:
+            st.write(f"**주소:** {last_part.get('address', '-')}")
 
 # -------------------------------
 # 관리자 등록 탭
@@ -285,15 +399,43 @@ with admin_tab:
             elif any(a["emp_no"] == emp_no for a in st.session_state.admins):
                 st.error("이미 존재하는 사번번호입니다.")
             else:
-                st.session_state.admins.append({
+                new_admin = {
                     "emp_no": emp_no, "name": name, "gender": gender, "email": email, "phone": phone,
                     "position": position, "management_type": management_type, "status": status
-                })
+                }
+                st.session_state.admins.append(new_admin)
+                st.session_state.last_registered_admin = new_admin
+                st.session_state.current_tab = 3  # 관리자 탭 유지
                 st.session_state.admin_success = True
+                # 탭 상태를 sessionStorage에 저장
+                st.markdown("""
+                <script>
+                    sessionStorage.setItem('info_register_tab', '3');
+                </script>
+                """, unsafe_allow_html=True)
                 st.rerun()
     
     # 성공 메시지 표시
     if st.session_state.get("admin_success", False):
         st.success("✅ 관리자가 성공적으로 등록되었습니다!")
         st.session_state.admin_success = False
+    
+    # 최근 등록한 관리자 표시
+    if st.session_state.last_registered_admin:
+        st.markdown("---")
+        st.markdown("#### 📋 최근 등록한 관리자")
+        last_admin = st.session_state.last_registered_admin
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.write(f"**사번번호:** {last_admin.get('emp_no', '-')}")
+            st.write(f"**이름:** {last_admin.get('name', '-')}")
+        with col2:
+            st.write(f"**성별:** {last_admin.get('gender', '-')}")
+            st.write(f"**직급:** {last_admin.get('position', '-')}")
+        with col3:
+            st.write(f"**관리 종류:** {last_admin.get('management_type', '-')}")
+            st.write(f"**재직현황:** {last_admin.get('status', '-')}")
+        with col4:
+            st.write(f"**이메일:** {last_admin.get('email', '-')}")
+            st.write(f"**전화번호:** {last_admin.get('phone', '-')}")
 
