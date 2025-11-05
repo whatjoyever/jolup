@@ -1,45 +1,99 @@
 import os, sys
+<<<<<<< Updated upstream
 import streamlit as st
 from client import api_get, api_post
+=======
+from typing import List, Dict, Any, Optional
+>>>>>>> Stashed changes
 
-# --- sidebar import 경로 보정 ---
+import streamlit as st
+
+# -------------------------------
+# import 경로 보정
+# -------------------------------
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-FRONTEND_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))  # ../frontend
+FRONTEND_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 if FRONTEND_DIR not in sys.path:
     sys.path.insert(0, FRONTEND_DIR)
 
 from sidebar import render_sidebar
-from client import api_get, api_post   # ✅ 올바른 import
-# --------------------------------
+from client import api_get, api_post
 
+<<<<<<< Updated upstream
 
 # ===============================
 # 페이지 설정 & 커스텀 사이드바
 # ===============================
 st.set_page_config(page_title="출고관리", page_icon="📤", layout="wide")
+=======
+# -------------------------------
+# 페이지 설정 & 사이드바
+# -------------------------------
+st.set_page_config(page_title="출고 관리", page_icon="📤", layout="wide")
+>>>>>>> Stashed changes
 render_sidebar("release")
 
-# ===============================
-# 글로벌 스타일 (여백 조정)
-# ===============================
+# -------------------------------
+# 전역 스타일
+# -------------------------------
 st.markdown("""
 <style>
+<<<<<<< Updated upstream
   .main .block-container { max-width: 100%; padding: 1rem; }
   div[data-testid="stHorizontalBlock"] { padding-left: 1rem; }
+=======
+  .main .block-container {max-width: 100%; padding: 1rem 4rem;}
+  [data-testid="stHorizontalBlock"] { padding-left: 1rem; }
+  .muted {color:#6b7280}
+>>>>>>> Stashed changes
 </style>
 """, unsafe_allow_html=True)
 
-# ===============================
-# 세션 상태 초기화
-# ===============================
-# products: info.py의 품목 등록을 공유
-if "products" not in st.session_state:
-    st.session_state.products = []
+# -------------------------------
+# 유틸: 참조 데이터
+# -------------------------------
+@st.cache_data(ttl=60)
+def load_menu_items() -> List[Dict[str, Any]]:
+    data, err = api_get("/menu_items", params={"active_only": True})
+    if err:
+        return []
+    if isinstance(data, dict):
+        for k in ("data", "items", "results"):
+            if isinstance(data.get(k), list):
+                data = data[k]
+                break
+    if not isinstance(data, list):
+        return []
+    out = []
+    for m in data:
+        if isinstance(m, dict) and m.get("id") and m.get("name"):
+            out.append({
+                "id": str(m["id"]),
+                "name": str(m["name"]),
+                "price": m.get("price") or 0,
+                "category_id": m.get("category_id")
+            })
+    return out
 
-# received_items: receive.py에서 입고 완료된 항목을 공유
-if "received_items" not in st.session_state:
-    st.session_state.received_items = []  # [{product_code, product_name, actual_qty, ...}]
+@st.cache_data(ttl=60)
+def load_locations() -> List[Dict[str, Any]]:
+    data, err = api_get("/locations")
+    if err:
+        return []
+    if isinstance(data, dict):
+        for k in ("data", "items", "results"):
+            if isinstance(data.get(k), list):
+                data = data[k]
+                break
+    if not isinstance(data, list):
+        return []
+    out = []
+    for x in data:
+        if isinstance(x, dict) and x.get("id") and x.get("name"):
+            out.append({"id": str(x["id"]), "name": str(x["name"])})
+    return out
 
+<<<<<<< Updated upstream
 # releases: 이 페이지에서 관리하는 출고 내역
 if "releases" not in st.session_state:
     st.session_state.releases = []        # [{product_code, product_name, qty, price, date, note}]
@@ -76,22 +130,31 @@ def calc_stock_map():
     return stock
 
 # ===============================
+=======
+# -------------------------------
+# 세션 초기화
+# -------------------------------
+if "cart" not in st.session_state:
+    st.session_state.cart: List[Dict[str, Any]] = []  # [{"menu_item_id","menu_name","qty","unit_price","discount"}]
+if "selected_location_id" not in st.session_state:
+    st.session_state.selected_location_id: Optional[str] = None
+
+# -------------------------------
+>>>>>>> Stashed changes
 # 헤더
-# ===============================
-title_col, right_col = st.columns([4, 2])
-with title_col:
-    st.title("출고관리")
-    st.caption("상품 출고 내역을 등록하고 조회합니다. (세션 재고 검증)")
-with right_col:
-    st.write(""); st.write("")
-    if st.button("HOME", use_container_width=True):
-        st.switch_page("main.py")
+# -------------------------------
+left, right = st.columns([4, 1])
+with left:
+    st.title("출고 관리")
+    st.caption("판매된 메뉴를 등록하면 DB가 레시피를 참조하여 원재료 재고를 자동 차감합니다.")
+with right:
+    st.markdown("<div style='height: 18px'></div>", unsafe_allow_html=True)
+    if st.button("← 입고/발주로", use_container_width=True):
+        st.switch_page("pages/receive.py")
 
-# ===============================
-# 탭
-# ===============================
-register_tab, history_tab = st.tabs(["출고 등록", "출고 내역"])
+st.divider()
 
+<<<<<<< Updated upstream
 # ------------------------------------------------------------------
 # 출고 등록
 # ------------------------------------------------------------------
@@ -320,3 +383,136 @@ with history_tab:
                         st.write(row["note"])
                     else:
                         st.write("-")
+=======
+# -------------------------------
+# 참조 데이터 로드
+# -------------------------------
+menus = load_menu_items()
+locations = load_locations()
+menu_labels = [f"{m['name']} ({m['id'][:8]})" for m in menus]
+
+# -------------------------------
+# 1) 출고 등록(장바구니 스타일)
+# -------------------------------
+st.subheader("① 판매/출고 등록")
+
+c1, c2 = st.columns([3, 2])
+with c1:
+    if not menus:
+        st.warning("등록된 메뉴가 없습니다. 먼저 메뉴와 레시피를 등록하세요.")
+    else:
+        st.caption("메뉴 선택")
+        sel = st.selectbox("메뉴", options=menu_labels, index=0, key="rel_menu", label_visibility="collapsed")
+        sel_idx = menu_labels.index(sel)
+        sel_menu = menus[sel_idx]
+
+        cols = st.columns([1, 1, 1, 1])
+        with cols[0]:
+            qty = st.number_input("수량", min_value=1, value=1, step=1, key="rel_qty")
+        with cols[1]:
+            up = st.number_input("단가(원)", min_value=0, value=int(sel_menu.get("price") or 0), step=100, key="rel_price")
+        with cols[2]:
+            dc = st.number_input("할인(원)", min_value=0, value=0, step=100, key="rel_dc")
+        with cols[3]:
+            st.markdown("<div class='muted'> </div>", unsafe_allow_html=True)
+            if st.button("장바구니 담기", use_container_width=True):
+                st.session_state.cart.append({
+                    "menu_item_id": sel_menu["id"],
+                    "menu_name": sel_menu["name"],
+                    "qty": int(qty),
+                    "unit_price": int(up),
+                    "discount": int(dc)
+                })
+                st.success(f"담김: {sel_menu['name']} × {qty}")
+                st.rerun()
+
+with c2:
+    st.caption("출고(차감) 위치")
+    if locations:
+        loc_labels = [f"{l['name']} ({l['id'][:8]})" for l in locations]
+        li = 0
+        sel_loc = st.selectbox("로케이션", options=loc_labels, index=li, key="rel_loc", label_visibility="collapsed")
+        st.session_state.selected_location_id = locations[loc_labels.index(sel_loc)]["id"]
+    else:
+        st.info("로케이션이 없습니다. 전체 재고에서 차감 또는 백엔드 기본 규칙 적용.")
+
+# -------------------------------
+# 2) 장바구니 내역
+# -------------------------------
+st.markdown("#### ② 장바구니")
+if not st.session_state.cart:
+    st.info("장바구니가 비어 있습니다.")
+else:
+    total_amount = 0
+    for i, it in enumerate(st.session_state.cart):
+        line_total = it["unit_price"] * it["qty"] - it["discount"]
+        total_amount += line_total
+        cc1, cc2, cc3, cc4, cc5 = st.columns([3, 1, 1, 1, 1])
+        with cc1:
+            st.write(f"• {it['menu_name']} ({it['menu_item_id'][:8]})")
+        with cc2:
+            st.write(f"수량: {it['qty']}")
+        with cc3:
+            st.write(f"단가: {it['unit_price']:,}원")
+        with cc4:
+            st.write(f"할인: {it['discount']:,}원")
+        with cc5:
+            if st.button("삭제", key=f"rel_del_{i}", use_container_width=True):
+                st.session_state.cart.pop(i)
+                st.rerun()
+    st.info(f"총 결제 예정 금액: **{total_amount:,}원**")
+
+# -------------------------------
+# 3) 판매 등록 → /sales 호출
+# -------------------------------
+st.markdown("#### ③ 판매 등록")
+
+colf1, colf2 = st.columns([2, 1])
+with colf1:
+    channel = st.selectbox("거래 채널", options=["POS", "ONLINE", "ETC"], index=0)
+with colf2:
+    commit = st.button("판매 등록(재고 자동 차감)", type="primary", use_container_width=True)
+
+if commit:
+    if not st.session_state.cart:
+        st.warning("장바구니가 비어 있습니다.")
+    else:
+        payload = {
+            "items": [
+                {
+                    "menu_item_id": it["menu_item_id"],
+                    "qty": int(it["qty"]),
+                    "unit_price": int(it["unit_price"]),
+                    "discount": int(it["discount"]),
+                }
+                for it in st.session_state.cart
+            ],
+            "channel": channel
+        }
+        if st.session_state.selected_location_id:
+            payload["location_id"] = st.session_state.selected_location_id
+
+        resp, err = api_post("/sales", payload)
+        if err:
+            # 재고 부족 등
+            if "INSUFFICIENT_STOCK" in (err or ""):
+                st.error("재고가 부족합니다. 로케이션/수량을 확인하세요.")
+            else:
+                st.error(f"판매 등록 실패: {err}")
+        else:
+            sale_id = (resp or {}).get("sale_id")
+            st.success(f"판매 등록 완료! sale_id={sale_id}")
+            st.session_state.cart = []
+            st.rerun()
+
+# -------------------------------
+# 4) 최근 판매 내역(선택)
+# -------------------------------
+st.markdown("#### ④ 최근 판매 (옵션)")
+recent, err = api_get("/sales", params={"limit": 10})
+if not err and isinstance(recent, list) and recent:
+    for s in recent:
+        st.write(f"- {s}")
+else:
+    st.caption("최근 판매 내역이 없거나 조회 엔드포인트가 비활성화입니다.")
+>>>>>>> Stashed changes
