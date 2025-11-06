@@ -22,7 +22,7 @@ render_sidebar("inventory")
 # 스타일 (기존 여백 조정 유지)
 st.markdown("""
 <style>
-  .main .block-container { max-width: 100%; padding: 1rem; }
+  .main .block-container { max-width: 100%; padding-top: 1rem; padding-right: 4rem; padding-left: 4rem; padding-bottom: 1rem; }
   div[data-testid="stHorizontalBlock"] { padding-left: 1rem; }
 </style>
 """, unsafe_allow_html=True)

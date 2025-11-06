@@ -33,6 +33,8 @@ st.markdown("""
 .block-container {
     max-width: 1120px !important;
     margin: 0 auto !important;
+    padding-left: 4rem !important;
+    padding-right: 4rem !important;
 }
 
 /* 컬럼 내부 버튼 중앙정렬 */
