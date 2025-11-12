@@ -115,19 +115,22 @@ else:
 # 발주 등록 폼
 with st.form("order_register_form", clear_on_submit=True):
     # 거래처 선택
-    st.caption("거래처 선택")
-    if "partners" in st.session_state and len(st.session_state.partners) > 0:
-        partner_options = [f"{p['name']} ({p['code']})" for p in st.session_state.partners]
+    st.markdown("### 거래처 선택")
+    partners = st.session_state.get("partners", [])
+    if partners and len(partners) > 0:
+        partner_options = [f"{p.get('name', '')} ({p.get('code', '')})" for p in partners]
         selected_partner_idx = st.selectbox(
-            "거래처",
+            "거래처 선택",
             options=range(len(partner_options)),
             format_func=lambda x: partner_options[x],
             key="order_register_partner_select",
-            label_visibility="collapsed"
+            help="기본정보 > 신규 등록 > 거래처 등록 탭에서 등록한 거래처를 선택하세요.",
+            label_visibility="visible"
         )
-        selected_partner = st.session_state.partners[selected_partner_idx]
+        selected_partner = partners[selected_partner_idx]
+        st.success(f"✅ 선택된 거래처: **{selected_partner.get('name', '')}** (코드: {selected_partner.get('code', '')})")
     else:
-        st.info("💡 거래처를 먼저 등록해주세요. (기본정보 > 목록보기 > 거래처 목록)")
+        st.warning("💡 거래처를 먼저 등록해주세요. (기본정보 > 신규 등록 > 거래처 등록 탭)")
         selected_partner = None
     
     r2c1, r2c2, r2c3 = st.columns([1, 1, 1])

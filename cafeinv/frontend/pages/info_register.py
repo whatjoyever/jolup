@@ -49,34 +49,92 @@ st.markdown("""
 </style>
 <script>
     // 탭 상태 유지를 위한 JavaScript
+    function activateTab(tabIndex) {
+        // 여러 방법으로 탭 버튼 찾기
+        let tabs = document.querySelectorAll('button[data-baseweb="tab"]');
+        if (!tabs || tabs.length === 0) {
+            tabs = document.querySelectorAll('[role="tab"]');
+        }
+        if (!tabs || tabs.length === 0) {
+            tabs = document.querySelectorAll('div[data-testid="stTabs"] button');
+        }
+        if (!tabs || tabs.length === 0) {
+            tabs = document.querySelectorAll('[data-testid="stTabs"] button');
+        }
+        if (tabs && tabs.length > tabIndex && tabs[tabIndex]) {
+            tabs[tabIndex].click();
+            return true;
+        }
+        return false;
+    }
+    
+    function setupTabListeners() {
+        const tabButtons = document.querySelectorAll('button[data-baseweb="tab"], [role="tab"], div[data-testid="stTabs"] button, [data-testid="stTabs"] button');
+        tabButtons.forEach(function(btn, index) {
+            // 기존 리스너 제거를 위해 클론 후 교체 (또는 중복 방지)
+            const newBtn = btn.cloneNode(true);
+            btn.parentNode.replaceChild(newBtn, btn);
+            newBtn.addEventListener('click', function() {
+                sessionStorage.setItem('info_register_tab', index.toString());
+            });
+        });
+    }
+    
+    // 페이지 로드 시 저장된 탭 활성화
     window.addEventListener('load', function() {
         const savedTab = sessionStorage.getItem('info_register_tab');
         if (savedTab !== null) {
             const tabIndex = parseInt(savedTab);
-            setTimeout(function() {
-                // Streamlit 탭 버튼 찾기 (여러 방법 시도)
-                let tabs = document.querySelectorAll('button[data-baseweb="tab"]');
-                if (!tabs || tabs.length === 0) {
-                    tabs = document.querySelectorAll('[role="tab"]');
+            // 여러 번 시도 (Streamlit이 완전히 로드될 때까지 기다림)
+            let attempts = 0;
+            const tryActivate = setInterval(function() {
+                attempts++;
+                if (activateTab(tabIndex) || attempts > 20) {
+                    clearInterval(tryActivate);
                 }
-                if (!tabs || tabs.length === 0) {
-                    tabs = document.querySelectorAll('div[data-testid="stTabs"] button');
-                }
-                if (tabs && tabs[tabIndex]) {
-                    tabs[tabIndex].click();
-                }
-            }, 300);
+            }, 100);
         }
         
-        // 탭 클릭 시 sessionStorage 업데이트
-        setTimeout(function() {
-            const tabButtons = document.querySelectorAll('button[data-baseweb="tab"], [role="tab"], div[data-testid="stTabs"] button');
-            tabButtons.forEach(function(btn, index) {
-                btn.addEventListener('click', function() {
-                    sessionStorage.setItem('info_register_tab', index.toString());
-                });
-            });
+        // 탭 클릭 리스너 설정 (여러 번 시도)
+        setTimeout(setupTabListeners, 300);
+        setTimeout(setupTabListeners, 800);
+        setTimeout(setupTabListeners, 1500);
+    });
+    
+    // Streamlit이 업데이트될 때 탭 상태 확인 (제한적)
+    let observerTimeout;
+    const observer = new MutationObserver(function(mutations) {
+        // 디바운싱: 500ms 내 여러 변경이 있어도 한 번만 실행
+        clearTimeout(observerTimeout);
+        observerTimeout = setTimeout(function() {
+            const savedTab = sessionStorage.getItem('info_register_tab');
+            if (savedTab !== null) {
+                const tabIndex = parseInt(savedTab);
+                // 탭이 실제로 변경되었는지 확인
+                let tabs = document.querySelectorAll('button[data-baseweb="tab"], [role="tab"], div[data-testid="stTabs"] button, [data-testid="stTabs"] button');
+                if (tabs && tabs.length > tabIndex) {
+                    // 현재 활성화된 탭 확인
+                    let activeTab = -1;
+                    tabs.forEach(function(tab, idx) {
+                        if (tab.classList.contains('st-ah') || tab.getAttribute('aria-selected') === 'true' || tab.classList.contains('active')) {
+                            activeTab = idx;
+                        }
+                    });
+                    // 저장된 탭과 현재 탭이 다르면 전환
+                    if (activeTab !== tabIndex) {
+                        activateTab(tabIndex);
+                    }
+                }
+                setupTabListeners();
+            }
         }, 500);
+    });
+    
+    // DOM 변경 감지 시작 (더 제한적인 옵션)
+    document.addEventListener('DOMContentLoaded', function() {
+        // 특정 요소만 관찰 (탭 컨테이너)
+        const tabsContainer = document.querySelector('[data-testid="stTabs"]') || document.body;
+        observer.observe(tabsContainer, { childList: true, subtree: false, attributes: true, attributeFilter: ['class', 'aria-selected'] });
     });
 </script>
 """, unsafe_allow_html=True)
@@ -155,12 +213,17 @@ with category_tab:
                 new_category = {"code": code, "name": name}
                 st.session_state.categories.append(new_category)
                 st.session_state.last_registered_category = new_category
-                st.session_state.current_tab = 0  # 카테고리 탭 유지
                 st.session_state.category_success = True
-                # 탭 상태를 sessionStorage에 저장
+                # 탭 상태를 sessionStorage에 저장하고 즉시 활성화
                 st.markdown("""
                 <script>
                     sessionStorage.setItem('info_register_tab', '0');
+                    setTimeout(function() {
+                        let tabs = document.querySelectorAll('button[data-baseweb="tab"], [role="tab"], div[data-testid="stTabs"] button, [data-testid="stTabs"] button');
+                        if (tabs && tabs.length > 0 && tabs[0]) {
+                            tabs[0].click();
+                        }
+                    }, 100);
                 </script>
                 """, unsafe_allow_html=True)
                 st.rerun()
@@ -254,12 +317,17 @@ with product_tab:
                     }
                     st.session_state.products.append(new_product)
                     st.session_state.last_registered_product = new_product
-                    st.session_state.current_tab = 1  # 품목 탭 유지
                     st.session_state.product_success = True
-                    # 탭 상태를 sessionStorage에 저장
+                    # 탭 상태를 sessionStorage에 저장하고 즉시 활성화
                     st.markdown("""
                     <script>
                         sessionStorage.setItem('info_register_tab', '1');
+                        setTimeout(function() {
+                            let tabs = document.querySelectorAll('button[data-baseweb="tab"], [role="tab"], div[data-testid="stTabs"] button, [data-testid="stTabs"] button');
+                            if (tabs && tabs.length > 1 && tabs[1]) {
+                                tabs[1].click();
+                            }
+                        }, 100);
                     </script>
                     """, unsafe_allow_html=True)
                     st.rerun()
@@ -327,12 +395,17 @@ with partner_tab:
                 }
                 st.session_state.partners.append(new_partner)
                 st.session_state.last_registered_partner = new_partner
-                st.session_state.current_tab = 2  # 거래처 탭 유지
                 st.session_state.partner_success = True
-                # 탭 상태를 sessionStorage에 저장
+                # 탭 상태를 sessionStorage에 저장하고 즉시 활성화
                 st.markdown("""
                 <script>
                     sessionStorage.setItem('info_register_tab', '2');
+                    setTimeout(function() {
+                        let tabs = document.querySelectorAll('button[data-baseweb="tab"], [role="tab"], div[data-testid="stTabs"] button, [data-testid="stTabs"] button');
+                        if (tabs && tabs.length > 2 && tabs[2]) {
+                            tabs[2].click();
+                        }
+                    }, 100);
                 </script>
                 """, unsafe_allow_html=True)
                 st.rerun()
@@ -405,12 +478,17 @@ with admin_tab:
                 }
                 st.session_state.admins.append(new_admin)
                 st.session_state.last_registered_admin = new_admin
-                st.session_state.current_tab = 3  # 관리자 탭 유지
                 st.session_state.admin_success = True
-                # 탭 상태를 sessionStorage에 저장
+                # 탭 상태를 sessionStorage에 저장하고 즉시 활성화
                 st.markdown("""
                 <script>
                     sessionStorage.setItem('info_register_tab', '3');
+                    setTimeout(function() {
+                        let tabs = document.querySelectorAll('button[data-baseweb="tab"], [role="tab"], div[data-testid="stTabs"] button, [data-testid="stTabs"] button');
+                        if (tabs && tabs.length > 3 && tabs[3]) {
+                            tabs[3].click();
+                        }
+                    }, 100);
                 </script>
                 """, unsafe_allow_html=True)
                 st.rerun()
