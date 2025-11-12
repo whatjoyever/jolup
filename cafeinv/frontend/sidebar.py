@@ -5,14 +5,40 @@ def render_sidebar(active: str = "main"):
     st.markdown("""
     <style>
       [data-testid="stSidebarNav"] { display: none; }
+      /* 사이드바 최소 크기 고정 */
+      [data-testid="stSidebar"] {
+        min-width: 200px !important;
+        max-width: 200px !important;
+        width: 200px !important;
+      }
+      [data-testid="stSidebar"] > div:first-child {
+        padding: 1rem 0.5rem !important;
+      }
       /* ✅ 사이드바 버튼은 가로폭 100%, 컴팩트 사이즈 */
       [data-testid="stSidebar"] .stButton > button {
         width: 100% !important;
-        height: 44px !important;
-        font-size: 16px !important;
+        height: 40px !important;
+        font-size: 14px !important;
         font-weight: 600 !important;
-        border-radius: 10px !important;
-        margin: 6px 0 !important;
+        border-radius: 8px !important;
+        margin: 4px 0 !important;
+        padding: 0 8px !important;
+      }
+      /* 사이드바 제목 크기 줄이기 */
+      [data-testid="stSidebar"] h3 {
+        font-size: 18px !important;
+        margin: 0.5rem 0 !important;
+        padding: 0 0.5rem !important;
+      }
+      /* 사이드바 구분선 간격 줄이기 */
+      [data-testid="stSidebar"] hr {
+        margin: 0.5rem 0 !important;
+      }
+      /* 사이드바 캡션 크기 줄이기 */
+      [data-testid="stSidebar"] .stCaption {
+        font-size: 11px !important;
+        padding: 0 0.5rem !important;
+        margin: 0.5rem 0 !important;
       }
     </style>
     """, unsafe_allow_html=True)
