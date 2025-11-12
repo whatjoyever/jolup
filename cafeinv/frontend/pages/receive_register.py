@@ -402,7 +402,20 @@ if len(unreceived_orders) == 0:
     st.warning("입고 처리가 필요한 발주가 없습니다.")
 else:
     st.caption("발주 선택")
-    order_options = [f"{r['product_name']} ({r['product_code']}) - 발주수량: {r['quantity']}개" for r in unreceived_orders]
+    # 발주일 포함한 옵션 생성
+    order_options = []
+    for r in unreceived_orders:
+        order_date = r.get('date', '')
+        if order_date:
+            try:
+                date_obj = datetime.strptime(order_date, "%Y-%m-%d")
+                date_str = date_obj.strftime("%Y-%m-%d")
+            except:
+                date_str = order_date
+        else:
+            date_str = "발주일 없음"
+        order_options.append(f"{r['product_name']} ({r['product_code']}) - 발주일: {date_str} - 발주수량: {r['quantity']}개")
+    
     selected_order_idx = st.selectbox("발주 건 선택",
                                       options=range(len(order_options)),
                                       format_func=lambda x: order_options[x],
@@ -410,20 +423,51 @@ else:
 
     if selected_order_idx is not None:
         selected_order = unreceived_orders[selected_order_idx]
-        st.info(f"선택된 발주: {selected_order['product_name']} ({selected_order['product_code']}) - 발주수량: {selected_order['quantity']}개")
+        order_date = selected_order.get('date', '')
+        if order_date:
+            try:
+                date_obj = datetime.strptime(order_date, "%Y-%m-%d")
+                date_str = date_obj.strftime("%Y-%m-%d")
+                date_display = date_obj.strftime("%Y년 %m월 %d일")
+            except:
+                date_str = order_date
+                date_display = order_date
+        else:
+            date_str = "발주일 없음"
+            date_display = "발주일 정보 없음"
+        
+        # 발주 정보 표시 (발주일 포함)
+        if order_date:
+            st.info(f"**선택된 발주:** {selected_order['product_name']} ({selected_order['product_code']}) | **발주일:** {date_str} | **발주수량:** {selected_order['quantity']}개")
+        else:
+            st.warning(f"⚠️ **선택된 발주:** {selected_order['product_name']} ({selected_order['product_code']}) | **발주일:** 발주일 정보가 없습니다. 발주 등록 시 발주일을 입력해주세요.")
 
         with st.form("receive_register_form", clear_on_submit=True):
-            col1, col2 = st.columns([1, 1])
-            with col1:
+            st.markdown("#### 발주 정보 (발주 등록 시 입력한 정보)")
+            info_col1, info_col2, info_col3 = st.columns([1, 1, 1])
+            with info_col1:
+                st.caption("발주일 (자동 표시)")
+                if order_date:
+                    st.text_input("발주일", value=date_display, key="order_date_display", disabled=True, label_visibility="collapsed", help="발주 등록 시 입력한 발주일이 자동으로 표시됩니다.")
+                else:
+                    st.text_input("발주일", value="발주일 정보 없음", key="order_date_display", disabled=True, label_visibility="collapsed", help="발주 등록 시 발주일을 입력하지 않았습니다.")
+            
+            with info_col2:
                 st.caption("발주 수량")
                 st.text_input("발주 수량", value=f"{selected_order['quantity']}개", key="order_qty_display", disabled=True, label_visibility="collapsed")
-
+            
+            with info_col3:
+                st.caption("발주 단가")
+                st.text_input("발주 단가", value=f"{selected_order['price']:,}원", key="order_price_display", disabled=True, label_visibility="collapsed")
+            
+            st.markdown("---")
+            st.markdown("#### 입고 정보")
+            
+            col1, col2 = st.columns([1, 1])
+            with col1:
                 st.caption("실제 입고 수량")
                 actual_qty = st.number_input("실제 입고 수량", min_value=0, step=1, value=selected_order['quantity'],
                                              key="receive_register_actual_qty", label_visibility="collapsed")
-
-                st.caption("발주 단가")
-                st.text_input("발주 단가", value=f"{selected_order['price']:,}원", key="order_price_display", disabled=True, label_visibility="collapsed")
 
                 st.caption("실제 입고 단가")
                 actual_price = st.number_input("실제 입고 단가", min_value=0, step=100, value=selected_order['price'],
