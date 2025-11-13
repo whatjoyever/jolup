@@ -376,6 +376,8 @@ if "staff_list" not in st.session_state:
     st.session_state.staff_list = ["김철수", "이영희", "박민수", "정수진"]
 if "last_received_item" not in st.session_state:
     st.session_state.last_received_item = None
+if "receive_completed" not in st.session_state:
+    st.session_state.receive_completed = False
 
 # -------------------------------
 # 헤더 & 뒤로가기 버튼
@@ -395,168 +397,301 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 # -------------------------------
 st.subheader("입고 처리")
 
-# 미입고 발주 목록
-unreceived_orders = [r for r in st.session_state.receives if not r.get("is_received", False)]
+# 미입고 발주 목록 먼저 처리 (페이지 로드 보장)
+# 미입고 발주 목록 (안전하게 처리)
+try:
+    receives_list = st.session_state.get('receives', [])
+    if not isinstance(receives_list, list):
+        receives_list = []
+    
+    unreceived_orders = [r for r in receives_list if isinstance(r, dict) and not r.get("is_received", False)]
+except Exception as e:
+    st.error(f"발주 목록을 불러오는 중 오류가 발생했습니다: {str(e)}")
+    unreceived_orders = []
 
+# 입고 완료 모달 팝오버 (화면 중앙 작은 창) - 페이지 하단에 표시
+# 모달 표시 조건 확인 (안전하게 처리)
+show_modal = False
+try:
+    show_modal = (st.session_state.get('receive_completed', False) and 
+                  st.session_state.get('last_received_item') is not None)
+except:
+    show_modal = False
+
+# 미입고 발주 목록 표시 (메인 콘텐츠)
 if len(unreceived_orders) == 0:
     st.warning("입고 처리가 필요한 발주가 없습니다.")
 else:
-    st.caption("발주 선택")
-    # 발주일 포함한 옵션 생성
-    order_options = []
-    for r in unreceived_orders:
-        order_date = r.get('date', '')
-        if order_date:
+    try:
+        st.caption("발주 선택")
+        # 발주일 포함한 옵션 생성 (누적 입고 수량 포함)
+        order_options = []
+        for r in unreceived_orders:
             try:
-                date_obj = datetime.strptime(order_date, "%Y-%m-%d")
-                date_str = date_obj.strftime("%Y-%m-%d")
-            except:
-                date_str = order_date
-        else:
-            date_str = "발주일 없음"
-        order_options.append(f"{r['product_name']} ({r['product_code']}) - 발주일: {date_str} - 발주수량: {r['quantity']}개")
-    
-    selected_order_idx = st.selectbox("발주 건 선택",
-                                      options=range(len(order_options)),
-                                      format_func=lambda x: order_options[x],
-                                      key="receive_register_order_select", label_visibility="collapsed")
-
-    if selected_order_idx is not None:
-        selected_order = unreceived_orders[selected_order_idx]
-        order_date = selected_order.get('date', '')
-        if order_date:
-            try:
-                date_obj = datetime.strptime(order_date, "%Y-%m-%d")
-                date_str = date_obj.strftime("%Y-%m-%d")
-                date_display = date_obj.strftime("%Y년 %m월 %d일")
-            except:
-                date_str = order_date
-                date_display = order_date
-        else:
-            date_str = "발주일 없음"
-            date_display = "발주일 정보 없음"
-        
-        # 발주 정보 표시 (발주일 포함)
-        if order_date:
-            st.info(f"**선택된 발주:** {selected_order['product_name']} ({selected_order['product_code']}) | **발주일:** {date_str} | **발주수량:** {selected_order['quantity']}개")
-        else:
-            st.warning(f"⚠️ **선택된 발주:** {selected_order['product_name']} ({selected_order['product_code']}) | **발주일:** 발주일 정보가 없습니다. 발주 등록 시 발주일을 입력해주세요.")
-
-        with st.form("receive_register_form", clear_on_submit=True):
-            st.markdown("#### 발주 정보 (발주 등록 시 입력한 정보)")
-            info_col1, info_col2, info_col3 = st.columns([1, 1, 1])
-            with info_col1:
-                st.caption("발주일 (자동 표시)")
+                order_date = r.get('date', '')
+                received_qty = r.get('received_qty', 0)
+                order_qty = r.get('quantity', 0)
+                remaining_qty = max(0, order_qty - received_qty)
+                product_name = r.get('product_name', '품목명 없음')
+                product_code = r.get('product_code', '코드 없음')
+                
                 if order_date:
-                    st.text_input("발주일", value=date_display, key="order_date_display", disabled=True, label_visibility="collapsed", help="발주 등록 시 입력한 발주일이 자동으로 표시됩니다.")
+                    try:
+                        date_obj = datetime.strptime(str(order_date), "%Y-%m-%d")
+                        date_str = date_obj.strftime("%Y-%m-%d")
+                    except:
+                        date_str = str(order_date)
                 else:
-                    st.text_input("발주일", value="발주일 정보 없음", key="order_date_display", disabled=True, label_visibility="collapsed", help="발주 등록 시 발주일을 입력하지 않았습니다.")
-            
-            with info_col2:
-                st.caption("발주 수량")
-                st.text_input("발주 수량", value=f"{selected_order['quantity']}개", key="order_qty_display", disabled=True, label_visibility="collapsed")
-            
-            with info_col3:
-                st.caption("발주 단가")
-                st.text_input("발주 단가", value=f"{selected_order['price']:,}원", key="order_price_display", disabled=True, label_visibility="collapsed")
-            
-            st.markdown("---")
-            st.markdown("#### 입고 정보")
-            
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                st.caption("실제 입고 수량")
-                actual_qty = st.number_input("실제 입고 수량", min_value=0, step=1, value=selected_order['quantity'],
-                                             key="receive_register_actual_qty", label_visibility="collapsed")
-
-                st.caption("실제 입고 단가")
-                actual_price = st.number_input("실제 입고 단가", min_value=0, step=100, value=selected_order['price'],
-                                               key="receive_register_actual_price", label_visibility="collapsed")
-            with col2:
-                st.caption("입고일")
-                receive_date = st.date_input("입고일", key="receive_register_date", label_visibility="collapsed")
-
-                st.caption("유통기한")
-                receive_expiry = st.date_input("유통기한", key="receive_register_expiry", label_visibility="collapsed")
-
-                st.caption("담당자")
-                staff_name = st.selectbox("담당자", options=st.session_state.staff_list,
-                                          key="receive_register_staff", label_visibility="collapsed")
-
-                st.caption("특이사항")
-                special_note = st.text_area("특이사항", key="receive_register_special_note",
-                                            label_visibility="collapsed",
-                                            placeholder="포장 박스 일부 파손, 유통기한 임박 상품 포함 등", height=100)
-
-            submitted = st.form_submit_button("입고 완료", use_container_width=True)
-
-            if submitted:
-                if actual_qty == 0:
-                    st.warning("실제 입고 수량을 입력하세요.")
+                    date_str = "발주일 없음"
+                
+                # 누적 입고 수량이 있으면 표시
+                if received_qty > 0:
+                    order_options.append(f"{product_name} ({product_code}) - 발주일: {date_str} - 발주수량: {order_qty}개 (입고: {received_qty}개, 남음: {remaining_qty}개)")
                 else:
-                    received_item = {
-                        "product_code": selected_order["product_code"],
-                        "product_name": selected_order["product_name"],
-                        "category": selected_order.get("category", ""),
-                        "unit": selected_order.get("unit", ""),
-                        "order_qty": selected_order['quantity'],
-                        "actual_qty": actual_qty,
-                        "order_price": selected_order['price'],
-                        "actual_price": actual_price,
-                        "receive_date": str(receive_date),
-                        "expiry": str(receive_expiry),
-                        "staff": staff_name,
-                        "special_note": special_note,
-                        "partner": selected_order.get("partner")
-                    }
+                    order_options.append(f"{product_name} ({product_code}) - 발주일: {date_str} - 발주수량: {order_qty}개")
+            except Exception as e:
+                # 개별 발주 항목 처리 중 오류 발생 시 해당 항목만 건너뜀
+                continue
+        
+        if len(order_options) == 0:
+            st.warning("표시할 수 있는 발주가 없습니다.")
+        else:
+            selected_order_idx = st.selectbox("발주 건 선택",
+                                              options=range(len(order_options)),
+                                              format_func=lambda x: order_options[x],
+                                              key="receive_register_order_select", label_visibility="collapsed")
+
+            if selected_order_idx is not None and selected_order_idx < len(unreceived_orders):
+                selected_order = unreceived_orders[selected_order_idx]
+                order_date = selected_order.get('date', '')
+                received_qty = selected_order.get('received_qty', 0)
+                order_qty = selected_order.get('quantity', 0)
+                remaining_qty = max(0, order_qty - received_qty)
+                
+                if order_date:
+                    try:
+                        date_obj = datetime.strptime(str(order_date), "%Y-%m-%d")
+                        date_str = date_obj.strftime("%Y-%m-%d")
+                        date_display = date_obj.strftime("%Y년 %m월 %d일")
+                    except:
+                        date_str = str(order_date)
+                        date_display = str(order_date)
+                else:
+                    date_str = "발주일 없음"
+                    date_display = "발주일 정보 없음"
+                
+                # 발주 정보 표시 (발주일은 오늘 날짜로 고정)
+                product_name = selected_order.get('product_name', '품목명 없음')
+                product_code = selected_order.get('product_code', '코드 없음')
+                
+                # 오늘 날짜를 한국어 형식으로 표시
+                today = datetime.now()
+                today_str = today.strftime("%Y년 %m월 %d일")
+                
+                if received_qty > 0:
+                    # 부분 입고된 경우
+                    st.warning(f"⚠️ **선택된 발주:** {product_name} ({product_code}) | **발주일:** {today_str} | **발주수량:** {order_qty}개 | **입고완료:** {received_qty}개 | **남은수량:** {remaining_qty}개")
+                else:
+                    # 처음 입고하는 경우
+                    st.info(f"**선택된 발주:** {product_name} ({product_code}) | **발주일:** {today_str} | **발주수량:** {order_qty}개")
+
+                with st.form("receive_register_form", clear_on_submit=True):
+                    st.markdown("#### 발주 정보 (발주 등록 시 입력한 정보)")
+                    info_col1, info_col2, info_col3, info_col4 = st.columns([1, 1, 1, 1])
+                    with info_col1:
+                        st.caption("발주일 (오늘 날짜)")
+                        # 오늘 날짜를 한국어 형식으로 표시
+                        today = datetime.now()
+                        today_display = today.strftime("%Y년 %m월 %d일")
+                        st.text_input("발주일", value=today_display, key="order_date_display", disabled=True, label_visibility="collapsed", help="입고 등록 시 오늘 날짜로 자동 설정됩니다.")
                     
-                    st.session_state.received_items.append(received_item)
-                    st.session_state.last_received_item = received_item  # 최근 입고 아이템 저장
+                    with info_col2:
+                        st.caption("발주 수량")
+                        st.text_input("발주 수량", value=f"{order_qty}개", key="order_qty_display", disabled=True, label_visibility="collapsed")
+                    
+                    with info_col3:
+                        st.caption("입고 완료 수량")
+                        st.text_input("입고 완료 수량", value=f"{received_qty}개", key="received_qty_display", disabled=True, label_visibility="collapsed", help="이미 입고 완료된 수량입니다.")
+                    
+                    with info_col4:
+                        st.caption("남은 수량")
+                        st.text_input("남은 수량", value=f"{remaining_qty}개", key="remaining_qty_display", disabled=True, label_visibility="collapsed", help="입고가 필요한 남은 수량입니다.")
+                    
+                    # 발주 정보 하단에 발주 단가 표시
+                    st.markdown("---")
+                    info_price_col1, info_price_col2 = st.columns([1, 1])
+                    with info_price_col1:
+                        st.caption("발주 단가")
+                        order_price = selected_order.get('price', 0)
+                        st.text_input("발주 단가", value=f"{order_price:,}원", key="order_price_display", disabled=True, label_visibility="collapsed")
+                    
+                    st.markdown("---")
+                    st.markdown("#### 입고 정보")
+                    
+                    # 입고 속성 선택 (입고 유형, 입고 상태, 거래처)
+                    st.markdown("##### 입고 속성")
+                    attr_col1, attr_col2, attr_col3 = st.columns([1, 1, 1])
+                    with attr_col1:
+                        st.caption("입고 유형")
+                        receive_type = st.selectbox(
+                            "입고 유형",
+                            options=["일반 입고", "반품 입고", "교환 입고", "재입고", "기타"],
+                            key="receive_register_type",
+                            help="입고 유형을 선택하세요.",
+                            label_visibility="collapsed"
+                        )
+                    
+                    with attr_col2:
+                        st.caption("입고 상태")
+                        receive_status = st.selectbox(
+                            "입고 상태",
+                            options=["정상", "부분 입고", "지연 입고", "불량 입고", "기타"],
+                            key="receive_register_status",
+                            help="입고 상태를 선택하세요. '부분 입고'를 선택하면 나중에 나머지 품목을 추가 입고할 수 있습니다." if received_qty == 0 else f"입고 상태를 선택하세요. 이미 {received_qty}개가 입고 완료되었습니다.",
+                            label_visibility="collapsed"
+                        )
+                    
+                    with attr_col3:
+                        st.caption("거래처")
+                        # 거래처 정보 가져오기
+                        partner_info = selected_order.get('partner')
+                        if partner_info:
+                            partner_name = partner_info.get('name', '거래처 정보 없음')
+                            partner_code = partner_info.get('code', '')
+                            if partner_code:
+                                partner_display = f"{partner_name} ({partner_code})"
+                            else:
+                                partner_display = partner_name
+                        else:
+                            partner_display = "거래처 정보 없음"
+                        
+                        st.text_input("거래처", value=partner_display, key="partner_display", disabled=True, label_visibility="collapsed", help="발주 등록 시 선택한 거래처입니다.")
+                    
+                    # 부분 입고 안내
+                    if received_qty > 0:
+                        st.info(f"📌 현재까지 {received_qty}개 입고 완료. 남은 {remaining_qty}개 입고 시 '부분 입고'를 선택하세요.")
+                    
+                    st.markdown("---")
+                    
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        st.caption("실제 입고 수량")
+                        # 부분 입고 시 남은 수량을 기본값으로 설정, 아니면 발주 수량을 기본값으로 설정
+                        default_qty = remaining_qty if remaining_qty > 0 else order_qty
+                        actual_qty = st.number_input(
+                            "실제 입고 수량", 
+                            min_value=0, 
+                            max_value=remaining_qty if remaining_qty > 0 else None,  # 부분 입고 시 남은 수량을 최대값으로 설정
+                            step=1, 
+                            value=default_qty,
+                            key="receive_register_actual_qty", 
+                            label_visibility="collapsed",
+                            help=f"발주 수량: {order_qty}개, 이미 입고 완료: {received_qty}개, 남은 수량: {remaining_qty}개" if received_qty > 0 else f"발주 수량: {order_qty}개"
+                        )
+                        
+                        # 부분 입고 안내 메시지
+                        if received_qty > 0:
+                            st.info(f"💡 이미 {received_qty}개가 입고 완료되었습니다. 남은 {remaining_qty}개를 입고 처리하세요.")
 
-                    for i, order in enumerate(st.session_state.receives):
-                        if order == selected_order:
-                            st.session_state.receives[i]["is_received"] = True
-                            break
+                        st.caption("실제 입고 단가")
+                        actual_price = st.number_input("실제 입고 단가", min_value=0, step=100, value=order_price,
+                                                       key="receive_register_actual_price", label_visibility="collapsed")
+                        
+                        st.caption("특이사항")
+                        special_note = st.text_area("특이사항", key="receive_register_special_note",
+                                                    label_visibility="collapsed",
+                                                    placeholder="포장 박스 일부 파손, 유통기한 임박 상품 포함 등", height=100)
+                    with col2:
+                        st.caption("입고일")
+                        receive_date = st.date_input("입고일", key="receive_register_date", label_visibility="collapsed")
 
-                    st.success(f"입고 완료: {selected_order['product_name']} {actual_qty}개")
-                    st.rerun()
+                        st.caption("유통기한")
+                        receive_expiry = st.date_input("유통기한", key="receive_register_expiry", label_visibility="collapsed")
 
-        # 폼 밖에서 최근 입고 아이템이 있으면 PDF 다운로드 버튼 표시
-        if st.session_state.last_received_item:
-            st.markdown("---")
-            st.markdown("### 거래명세서 PDF 저장")
-            
-            received_item = st.session_state.last_received_item
-            
-            # 거래처 정보 가져오기
-            partner_info = received_item.get("partner")
-            if not partner_info:
-                # 기본 거래처 정보
-                partner_info = {
-                    "code": "",
-                    "name": "메가커피",
-                    "business_number": "123-1232-12",
-                    "representative": "김메가",
-                    "address": "서울시 강남구",
-                    "phone": "02-1321-4231"
-                }
-            
-            # PDF 생성
-            pdf_buffer = generate_invoice_pdf(
-                [received_item],
-                received_item['receive_date'],
-                partner_info
-            )
-            
-            # 파일명 생성
-            filename = f"거래명세서_{received_item['product_name']}_{received_item['receive_date'].replace('-', '')}.pdf"
-            
-            st.download_button(
-                label="거래명세서 pdf 저장",
-                data=pdf_buffer,
-                file_name=filename,
-                mime="application/pdf",
-                use_container_width=True,
-                key="invoice_download_btn"
-            )
+                        st.caption("담당자")
+                        staff_name = st.selectbox("담당자", options=st.session_state.staff_list,
+                                                  key="receive_register_staff", label_visibility="collapsed")
+
+                    submitted = st.form_submit_button("입고 완료", use_container_width=True)
+
+                    if submitted:
+                        if actual_qty == 0:
+                            st.warning("실제 입고 수량을 입력하세요.")
+                        else:
+                            # 발주에서 현재 누적 입고 수량 가져오기
+                            current_received_qty = selected_order.get("received_qty", 0)
+                            order_qty = selected_order.get('quantity', 0)
+                            
+                            # 새로운 누적 입고 수량 계산
+                            new_received_qty = current_received_qty + actual_qty
+                            
+                            # 입고 수량이 발주 수량을 초과하는지 확인
+                            if new_received_qty > order_qty:
+                                st.warning(f"⚠️ 입고 수량이 발주 수량을 초과합니다. 발주 수량: {order_qty}개, 이미 입고된 수량: {current_received_qty}개, 현재 입고 수량: {actual_qty}개")
+                            else:
+                                received_item = {
+                                    "product_code": selected_order.get("product_code", ""),
+                                    "product_name": selected_order.get("product_name", ""),
+                                    "category": selected_order.get("category", ""),
+                                    "unit": selected_order.get("unit", ""),
+                                    "order_qty": order_qty,
+                                    "actual_qty": actual_qty,
+                                    "accumulated_qty": new_received_qty,  # 누적 입고 수량
+                                    "remaining_qty": order_qty - new_received_qty,  # 남은 입고 수량
+                                    "order_price": order_price,
+                                    "actual_price": actual_price,
+                                    "receive_date": str(receive_date),
+                                    "expiry": str(receive_expiry),
+                                    "staff": staff_name,
+                                    "special_note": special_note,
+                                    "partner": selected_order.get("partner"),
+                                    "receive_type": receive_type,  # 입고 유형
+                                    "receive_status": receive_status  # 입고 상태
+                                }
+                                
+                                st.session_state.received_items.append(received_item)
+                                st.session_state.last_received_item = received_item  # 최근 입고 아이템 저장
+                                st.session_state.receive_completed = True  # 입고 완료 플래그 설정
+
+                                # 발주 데이터 업데이트
+                                for i, order in enumerate(st.session_state.receives):
+                                    if order == selected_order:
+                                        # 누적 입고 수량 업데이트
+                                        st.session_state.receives[i]["received_qty"] = new_received_qty
+                                        
+                                        # 전체 입고 완료 여부 확인
+                                        # 누적 입고 수량이 발주 수량과 같거나 크면 완료 처리
+                                        # 입고 상태가 "부분 입고"이고 남은 수량이 있으면 미완료 상태 유지
+                                        if new_received_qty >= order_qty:
+                                            # 누적 입고 수량이 발주 수량과 같거나 크면 완료 처리
+                                            st.session_state.receives[i]["is_received"] = True
+                                        elif receive_status == "부분 입고" and new_received_qty < order_qty:
+                                            # 부분 입고이고 남은 수량이 있으면 미완료 상태 유지 (나중에 추가 입고 가능)
+                                            st.session_state.receives[i]["is_received"] = False
+                                        else:
+                                            # 입고 상태가 "정상"이고 누적 입고 수량이 발주 수량보다 작으면 미완료 상태 유지
+                                            st.session_state.receives[i]["is_received"] = False
+                                        
+                                        break
+
+                                st.rerun()
+    except Exception as e:
+        st.error(f"입고 등록 처리 중 오류가 발생했습니다: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
+
+# 입고 완료 모달 팝오버 (페이지 하단에 표시)
+if show_modal:
+    try:
+        received_item = st.session_state.get('last_received_item')
+        if received_item:
+            # 모달 표시 코드는 여기에 추가 (현재는 간단히 성공 메시지만 표시)
+            st.success("✅ 입고 처리가 완료되었습니다!")
+            if st.button("닫기", key="close_receive_completed_modal"):
+                st.session_state.receive_completed = False
+                st.session_state.last_received_item = None
+                st.rerun()
+    except Exception as e:
+        # 에러가 발생하면 모달을 표시하지 않음
+        pass
 

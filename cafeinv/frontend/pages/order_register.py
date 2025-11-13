@@ -1,6 +1,6 @@
 import os, sys
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 # --- sidebar import 경로 보정 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -133,7 +133,7 @@ with st.form("order_register_form", clear_on_submit=True):
         st.warning("💡 거래처를 먼저 등록해주세요. (기본정보 > 신규 등록 > 거래처 등록 탭)")
         selected_partner = None
     
-    r2c1, r2c2, r2c3 = st.columns([1, 1, 1])
+    r2c1, r2c2, r2c3, r2c4 = st.columns([1, 1, 1, 1])
     with r2c1:
         st.caption("발주 수량")
         receive_qty = st.number_input("발주 수량", min_value=1, step=1, value=1,
@@ -155,8 +155,19 @@ with st.form("order_register_form", clear_on_submit=True):
         else:
             receive_price = 0
     with r2c3:
-        st.caption("발주일")
-        receive_date = st.date_input("발주일", key="order_register_date_input", label_visibility="collapsed")
+        st.caption("발주일 (오늘 날짜)")
+        # 오늘 날짜로 자동 설정 (선택 불가)
+        today = date.today()
+        receive_date = st.date_input("발주일", value=today, key="order_register_date_input", 
+                                     label_visibility="collapsed", disabled=True,
+                                     help="발주일은 오늘 날짜로 자동 설정됩니다.")
+    with r2c4:
+        st.caption("납기일")
+        # 납기일 선택 (기본값: 오늘 날짜 + 7일)
+        default_delivery_date = date.today() + timedelta(days=7)
+        delivery_date = st.date_input("납기일", value=default_delivery_date, key="order_register_delivery_date_input",
+                                      label_visibility="collapsed", min_value=date.today(),
+                                      help="납기일을 선택하세요. (기본값: 오늘 + 7일)")
 
     r3c1, r3c2 = st.columns([2, 1])
     with r3c1:
@@ -191,9 +202,11 @@ with st.form("order_register_form", clear_on_submit=True):
                 "quantity": receive_qty,
                 "price": receive_price,
                 "date": str(receive_date),
+                "delivery_date": str(delivery_date),  # 납기일 추가
                 "note": receive_note,
                 "partner": partner_info,  # 거래처 정보 추가
-                "is_received": False
+                "is_received": False,
+                "received_qty": 0  # 누적 입고 수량 (부분 입고 처리용)
             })
             st.success("발주 내역이 등록되었습니다.")
             st.session_state.receive_search_results = []

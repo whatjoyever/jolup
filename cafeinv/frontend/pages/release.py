@@ -93,7 +93,7 @@ with title_col:
 with right_col:
     st.write(""); st.write("")
     if st.button("HOME", use_container_width=True):
-        st.switch_page("main.py")
+        st.switch_page("pages/main.py")
 
 # ===============================
 # 탭
