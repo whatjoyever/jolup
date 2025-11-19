@@ -31,10 +31,10 @@ st.markdown("""
 <style>
 /* 메인 컨테이너 중앙정렬 */
 .block-container {
-    max-width: 1120px !important;
+    max-width: 900px !important;
     margin: 0 auto !important;
-    padding-left: 4rem !important;
-    padding-right: 4rem !important;
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
 }
 
 /* 컬럼 내부 버튼 중앙정렬 */

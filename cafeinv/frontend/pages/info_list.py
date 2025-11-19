@@ -21,13 +21,13 @@ render_sidebar("info")
 st.markdown("""
 <style>
     .main .block-container {
-        max-width: 100%;
+        max-width: 900px;
         padding-top: 1rem;
-        padding-right: 4rem;
-        padding-left: 4rem;
+        padding-right: 1.5rem;
+        padding-left: 1.5rem;
         padding-bottom: 1rem;
     }
-    div[data-testid="stHorizontalBlock"] { padding-left: 1rem; }
+    div[data-testid="stHorizontalBlock"] { padding-left: 0.5rem; }
     button[data-testid="baseButton-secondary"]:hover {
         background-color: #d3d3d3 !important;
         border-color: #d3d3d3 !important;

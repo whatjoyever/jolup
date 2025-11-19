@@ -5,6 +5,7 @@ def render_sidebar(active: str = "main"):
     st.markdown("""
     <style>
       [data-testid="stSidebarNav"] { display: none; }
+      [data-testid="collapsedControl"] { display: none !important; }
       /* 사이드바 최소 크기 고정 */
       [data-testid="stSidebar"] {
         min-width: 200px !important;

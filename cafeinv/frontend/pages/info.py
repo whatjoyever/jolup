@@ -19,11 +19,11 @@ render_sidebar("info")
 st.markdown("""
 <style>
     .main .block-container {
-        max-width: 100%;
-        padding-top: 2rem;
-        padding-right: 4rem;
-        padding-left: 4rem;
-        padding-bottom: 2rem;
+        max-width: 900px;
+        padding-top: 1rem;
+        padding-right: 1.5rem;
+        padding-left: 1.5rem;
+        padding-bottom: 1rem;
     }
     .info-card {
         background-color: white;
