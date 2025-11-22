@@ -23,29 +23,24 @@ def api_get(path: str, params: dict | None = None, timeout: int = 10):
     except Exception as e:
         return None, str(e)
 
-
 # -----------------------------
-# CSS (버튼 크기, 정렬, 겹침 방지)
+# CSS (버튼 크기, 정렬)
 # -----------------------------
 st.markdown("""
 <style>
-/* 메인 컨테이너 중앙정렬 */
+/* 메인 컨테이너 살짝 넓게 */
 .block-container {
-    max-width: 1120px !important;
+    max-width: 1100px !important;
     margin: 0 auto !important;
-    padding-left: 4rem !important;
-    padding-right: 4rem !important;
-}
-
-/* 컬럼 내부 버튼 중앙정렬 */
-div[data-testid="column"] {
-    display: flex;
-    justify-content: center;
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
 }
 
 /* 버튼 스타일 */
 .stButton > button {
-    width: 100% !important;
+    display: block;                 /* 가운데 정렬 위해 block 으로 */
+    margin: 0 auto;                 /* 좌우 중앙 정렬 */
+    width: 260px !important;        /* 버튼 가로폭 */
     height: 160px !important;
     font-size: 28px !important;
     font-weight: 800 !important;
@@ -60,11 +55,6 @@ div[data-testid="column"] {
     background: #e9ecef !important;
     transform: translateY(-3px) !important;
 }
-
-/* 컬럼 간 간격 확보 */
-section[data-testid="stHorizontalBlock"] > div {
-    gap: 80px !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -77,42 +67,26 @@ st.markdown(
 )
 
 # -----------------------------
-# 메인 버튼 (중앙 2열)
+# 메인 버튼 (중앙 2x2)
 # -----------------------------
 left, center, right = st.columns([1, 8, 1])
+
 with center:
     # 첫 번째 줄
-    col1, col2 = st.columns(2, gap="large")
-    with col1:
-        if st.button("⚙️ 기본정보", use_container_width=True):
+    row1_col1, row1_col2 = st.columns(2, gap="large")
+    with row1_col1:
+        if st.button("⚙️ 기본정보", use_container_width=False):
             st.switch_page("pages/info.py")
-    with col2:
-        if st.button("🧾 입고관리", use_container_width=True):
+    with row1_col2:
+        if st.button("🧾 입고관리", use_container_width=False):
             st.switch_page("pages/receive.py")
 
     # 두 번째 줄
-    col3, col4 = st.columns(2, gap="large")
-    with col3:
-        if st.button("📤 출고관리", use_container_width=True):
+    row2_col1, row2_col2 = st.columns(2, gap="large")
+    with row2_col1:
+        if st.button("📤 출고관리", use_container_width=False):
             st.switch_page("pages/release.py")
-    with col4:
-        if st.button("📦 재고현황", use_container_width=True):
+    with row2_col2:
+        if st.button("📦 재고현황", use_container_width=False):
             st.switch_page("pages/inventory.py")
 
-# -----------------------------
-# 백엔드 연동 테스트
-# -----------------------------
-st.markdown("---")
-st.subheader("🔌 백엔드 연동 테스트")
-
-t1, t2 = st.columns(2, gap="large")
-with t1:
-    if st.button("GET /health", use_container_width=True):
-        data, err = api_get("/health")
-        st.write("결과:", data if data else err)
-with t2:
-    if st.button("GET /inventory_tx?limit=20", use_container_width=True):
-        data, err = api_get("/inventory_tx", params={"limit": 20})
-        st.write("결과:", data if data else err)
-
-st.caption(f"API_URL = {API_URL}")
