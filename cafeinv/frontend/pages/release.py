@@ -14,7 +14,7 @@ if FRONTEND_DIR not in sys.path:
     sys.path.insert(0, FRONTEND_DIR)
 
 from sidebar import render_sidebar
-from client import api_get, api_post  # 나중에 백엔드 연동용으로 사용 가능
+from client import api_get, api_post  # 나중에 백엔드 연동용
 
 
 # -----------------------------
@@ -42,7 +42,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 # -----------------------------
 # 세션 상태 기본값
 # -----------------------------
@@ -58,7 +57,7 @@ if "products" not in st.session_state:
 if "recipes" not in st.session_state:
     st.session_state.recipes = {}
 
-# 혹시 예전에 session_recipes 같은 이름을 썼다면 합쳐주기
+# 옛날 이름(session_recipes)을 쓰던 경우 합쳐주기
 if "session_recipes" in st.session_state and st.session_state.session_recipes:
     if not st.session_state.recipes:
         st.session_state.recipes = st.session_state.session_recipes
@@ -68,7 +67,7 @@ if "session_recipes" in st.session_state and st.session_state.session_recipes:
 # 🔁 단위 변환 유틸
 # =========================================================
 
-# 기본 변환 계수: (from_unit, to_unit) -> factor
+# (from_unit, to_unit) -> factor
 UNIT_CONVERT = {
     ("kg", "g"): 1000.0,
     ("g", "kg"): 0.001,
@@ -78,7 +77,10 @@ UNIT_CONVERT = {
 
 
 def convert_qty(qty: float, from_unit: str | None, to_unit: str | None) -> float:
-    """단위 변환 (kg↔g, L↔ml). 정의되지 않은 조합은 그대로 리턴."""
+    """
+    단위 변환 (kg↔g, L↔ml).
+    - 정의되지 않은 조합이거나 단위가 없으면 그냥 원래 값 반환.
+    """
     if qty is None:
         return 0.0
     if not from_unit or not to_unit or from_unit == to_unit:
@@ -86,7 +88,7 @@ def convert_qty(qty: float, from_unit: str | None, to_unit: str | None) -> float
 
     factor = UNIT_CONVERT.get((from_unit, to_unit))
     if factor is None:
-        # 변환 정의 안 되어 있으면 그냥 값 그대로 사용 (예: 개, 병 등)
+        # 예: 개, 병 등 변환 정의가 없는 조합은 그대로
         return float(qty)
     return float(qty) * factor
 
@@ -94,9 +96,9 @@ def convert_qty(qty: float, from_unit: str | None, to_unit: str | None) -> float
 def get_product_base_unit(product_code: str) -> str:
     """
     품목별 '기준 단위'를 결정.
-    - 원두: kg / g → g 기준
-    - 액체: L / ml → ml 기준
-    - 그 외: products에 정의된 unit 그대로
+    - weight: kg / g  → 기준 g
+    - volume: L / ml → 기준 ml
+    - 그 외: products.unit 그대로
     """
     for p in st.session_state.products:
         if p.get("code") == product_code:
@@ -105,39 +107,61 @@ def get_product_base_unit(product_code: str) -> str:
                 return "g"
             if u in ("L", "ml"):
                 return "ml"
-            return u or "g"
-    # 품목 정보가 없으면 일단 g로
+            return u or "개"
+    # 품목 정보를 못 찾으면 일단 g
     return "g"
 
 
 def get_stock_by_code(product_code: str) -> tuple[float, str]:
     """
-    해당 품목의 현재 재고를 계산해서 (수량, 기준단위) 튜플로 반환.
-
-    - 입고: received_items.actual_qty + unit
-    - 출고: releases.qty + unit
-    둘 다 기준 단위로 변환해서 합산한다.
+    해당 품목의 현재 재고를 계산 (기준단위로 통일)
     """
+
+    # 1) 제품 정보 가져오기 (정확한 단위 사용)
     base_unit = get_product_base_unit(product_code)
 
-    # 입고 합계
+    # 제품의 등록 단위 확인
+    product_unit = None
+    for p in st.session_state.products:
+        if p.get("code") == product_code:
+            product_unit = p.get("unit", "").strip()
+            break
+
+    if not product_unit:
+        product_unit = base_unit  # 최악의 경우 fallback
+
+    # --------------------------
+    # 2) 입고량 계산(정확한 단위 변환)
+    # --------------------------
     total_in = 0.0
     for r in st.session_state.received_items:
-        if r.get("product_code") == product_code:
-            qty = float(r.get("actual_qty", 0) or 0)
-            from_unit = (r.get("unit") or base_unit).strip()
-            qty_base = convert_qty(qty, from_unit, base_unit)
-            total_in += qty_base
+        if r.get("product_code") != product_code:
+            continue
 
-    # 출고 합계
+        qty = float(r.get("actual_qty", 0) or 0)
+        receive_unit = r.get("unit", product_unit).strip()
+
+        # 입고 단위를 기준단위에 맞게 변환
+        qty_base = convert_qty(qty, receive_unit, base_unit)
+        total_in += qty_base
+
+    # --------------------------
+    # 3) 출고량 계산(정확한 단위 변환)
+    # --------------------------
     total_out = 0.0
     for r in st.session_state.releases:
-        if r.get("product_code") == product_code:
-            qty = float(r.get("qty", 0) or 0)
-            from_unit = (r.get("unit") or base_unit).strip()
-            qty_base = convert_qty(qty, from_unit, base_unit)
-            total_out += qty_base
+        if r.get("product_code") != product_code:
+            continue
 
+        qty = float(r.get("qty", 0) or 0)
+        release_unit = r.get("unit", product_unit).strip()
+
+        qty_base = convert_qty(qty, release_unit, base_unit)
+        total_out += qty_base
+
+    # --------------------------
+    # 4) 현재 재고 = 입고 - 출고
+    # --------------------------
     return total_in - total_out, base_unit
 
 
@@ -208,6 +232,7 @@ with tab_register:
                 cups = st.number_input("출고 수량(잔/개)", min_value=1, step=1, value=1)
 
             st.markdown("#### 사용 예정 원재료")
+
             if not ingredients:
                 st.warning("이 레시피에 등록된 원재료가 없습니다. 레시피를 먼저 수정해 주세요.")
             else:
@@ -216,22 +241,29 @@ with tab_register:
                 for ing in ingredients:
                     code = ing.get("ingredient_code")
                     name = ing.get("ingredient_name")
-                    unit = ing.get("unit", "g")
+                    recipe_unit = ing.get("unit", "g").strip()
                     base_qty = float(ing.get("qty", 0.0))
 
                     required_qty = base_qty * cups  # 레시피 단위 기준 필요량
-                    current_stock, stock_unit = get_stock_by_code(code)
 
-                    # 비교를 위해 '필요량'을 기준 단위로 변환
-                    required_in_base = convert_qty(required_qty, unit, stock_unit)
-
-                    line = (
-                        f"- {name} ({code}) : 1잔당 {base_qty}{unit} × {cups} "
-                        f"= {required_qty}{unit} 필요 / "
-                        f"현재 재고: {current_stock:.2f}{stock_unit}"
+                    # 기준 단위 기준 재고
+                    current_stock_base, base_unit = get_stock_by_code(code)
+                    # 화면 표시는 레시피 단위로 변환해서 보여줌
+                    current_stock_for_display = convert_qty(
+                        current_stock_base, base_unit, recipe_unit
+                    )
+                    # 비교는 기준 단위로
+                    required_in_base = convert_qty(
+                        required_qty, recipe_unit, base_unit
                     )
 
-                    if current_stock < required_in_base:
+                    line = (
+                        f"- {name} ({code}) : "
+                        f"1잔당 {base_qty}{recipe_unit} × {cups} = {required_qty}{recipe_unit} 필요 / "
+                        f"현재 재고: {current_stock_for_display:.2f}{recipe_unit}"
+                    )
+
+                    if current_stock_base < required_in_base:
                         insufficient = True
                         st.markdown(
                             f"<span style='color:#f97373;'>{line}  (재고 부족)</span>",
@@ -241,11 +273,15 @@ with tab_register:
                         st.markdown(line)
 
                 st.markdown("---")
-                reason = st.text_input("출고 사유", placeholder="예: 판매, 시음, 폐기 등", value="판매")
+                reason = st.text_input(
+                    "출고 사유", placeholder="예: 판매, 시음, 폐기 등", value="판매"
+                )
 
                 disabled = insufficient or cups <= 0
                 if insufficient:
-                    st.warning("재고가 부족한 원재료가 있어 출고가 불가능합니다. 입고를 먼저 진행해 주세요.")
+                    st.warning(
+                        "재고가 부족한 원재료가 있어 출고가 불가능합니다. 입고를 먼저 진행해 주세요."
+                    )
 
                 if st.button(
                     "레시피 기반 출고 등록",
@@ -257,7 +293,7 @@ with tab_register:
                     for ing in ingredients:
                         code = ing.get("ingredient_code")
                         name = ing.get("ingredient_name")
-                        unit = ing.get("unit", "g")
+                        recipe_unit = ing.get("unit", "g").strip()
                         base_qty = float(ing.get("qty", 0.0))
                         required_qty = base_qty * cups
 
@@ -265,13 +301,15 @@ with tab_register:
                             product_code=code,
                             product_name=name,
                             qty=required_qty,
-                            unit=unit,
+                            unit=recipe_unit,
                             reason=f"[레시피:{selected_menu}] {reason}",
                             tx_type="레시피 출고",
                             menu_name=selected_menu,
                         )
 
-                    st.success(f"'{selected_menu}' {cups}개 레시피 기반 출고가 등록되었습니다.")
+                    st.success(
+                        f"'{selected_menu}' {cups}개 레시피 기반 출고가 등록되었습니다."
+                    )
 
     # -------------------------------------------------
     # 2) 수동 출고 등록
@@ -291,34 +329,44 @@ with tab_register:
             code = selected_product["code"]
             name = selected_product["name"]
 
-            current_stock, stock_unit = get_stock_by_code(code)
-            st.caption(f"현재 재고: {current_stock:.2f}{stock_unit} (기준 단위)")
+            current_stock_base, base_unit = get_stock_by_code(code)
 
             # 출고 단위 선택 (기본은 기준 단위)
             unit_options = ["g", "kg", "ml", "L", "개", "병"]
-            default_unit = stock_unit if stock_unit in unit_options else selected_product.get("unit", stock_unit)
+            # 품목 단위가 있으면 우선, 없으면 기준 단위
+            default_unit = selected_product.get("unit", base_unit)
             if default_unit not in unit_options:
-                unit_index = 0
-            else:
-                unit_index = unit_options.index(default_unit)
+                default_unit = base_unit if base_unit in unit_options else "개"
+            unit_index = unit_options.index(default_unit)
 
             col1, col2 = st.columns(2)
             with col1:
-                qty = st.number_input("출고 수량", min_value=0.0, step=1.0, value=0.0)
+                qty = st.number_input(
+                    "출고 수량", min_value=0.0, step=1.0, value=0.0
+                )
             with col2:
                 unit = st.selectbox("출고 단위", options=unit_options, index=unit_index)
+
+            # 화면 표시용 현재 재고 (선택한 출고 단위로 변환)
+            current_stock_for_display = convert_qty(
+                current_stock_base, base_unit, unit
+            )
+            st.caption(
+                f"현재 재고: {current_stock_for_display:.2f}{unit} "
+                f"(기준 단위: {current_stock_base:.2f}{base_unit})"
+            )
 
             reason = st.text_input("출고 사유", placeholder="예: 폐기, 샘플 사용, 분실 등")
 
             # 재고 체크: 입력 단위를 기준 단위로 변환해서 비교
-            required_in_base = convert_qty(qty, unit, stock_unit)
-            disabled = qty <= 0 or current_stock < required_in_base
+            required_in_base = convert_qty(qty, unit, base_unit)
+            disabled = qty <= 0 or current_stock_base < required_in_base
 
-            if qty > 0 and current_stock < required_in_base:
+            if qty > 0 and current_stock_base < required_in_base:
                 st.warning(
                     f"재고보다 많은 수량을 출고할 수 없습니다. "
-                    f"(요청: {qty}{unit} ≒ {required_in_base:.2f}{stock_unit}, "
-                    f"재고: {current_stock:.2f}{stock_unit})"
+                    f"(요청: {qty}{unit} ≒ {required_in_base:.2f}{base_unit}, "
+                    f"재고: {current_stock_base:.2f}{base_unit})"
                 )
 
             if st.button(
@@ -352,9 +400,7 @@ with tab_history:
     else:
         # 최신 순으로 정렬
         releases_sorted = sorted(
-            releases,
-            key=lambda x: x.get("created_at", ""),
-            reverse=True,
+            releases, key=lambda x: x.get("created_at", ""), reverse=True
         )
 
         st.markdown("#### 출고 목록")
