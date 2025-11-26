@@ -393,21 +393,120 @@ with button_col:
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 # -------------------------------
-# 입고 처리 섹션
+# 미입고 발주 목록 확인 섹션
 # -------------------------------
-st.subheader("입고 처리")
+st.subheader("📋 미입고 발주 목록")
 
-# 미입고 발주 목록 먼저 처리 (페이지 로드 보장)
 # 미입고 발주 목록 (안전하게 처리)
 try:
     receives_list = st.session_state.get('receives', [])
     if not isinstance(receives_list, list):
         receives_list = []
     
-    unreceived_orders = [r for r in receives_list if isinstance(r, dict) and not r.get("is_received", False)]
+    unreceived_orders_list = [r for r in receives_list if isinstance(r, dict) and not r.get("is_received", False)]
 except Exception as e:
     st.error(f"발주 목록을 불러오는 중 오류가 발생했습니다: {str(e)}")
-    unreceived_orders = []
+    unreceived_orders_list = []
+
+if len(unreceived_orders_list) == 0:
+    st.info("현재 미입고 발주가 없습니다. 모든 발주가 입고 완료되었습니다. ✅")
+else:
+    # 검색 및 필터 기능
+    search_col1, search_col2 = st.columns([2, 1])
+    with search_col1:
+        search_query = st.text_input("🔍 품목명/코드 검색", key="unreceived_search", placeholder="품목명 또는 코드를 입력하세요")
+    with search_col2:
+        filter_category = st.selectbox(
+            "카테고리 필터",
+            options=["전체"] + sorted(set([r.get("category", "") for r in unreceived_orders_list if r.get("category")])),
+            key="unreceived_category_filter"
+        )
+    
+    # 필터링
+    filtered_unreceived = unreceived_orders_list
+    if search_query:
+        search_lower = search_query.lower()
+        filtered_unreceived = [
+            r for r in filtered_unreceived
+            if search_lower in r.get("product_name", "").lower() or
+               search_lower in r.get("product_code", "").lower()
+        ]
+    
+    if filter_category != "전체":
+        filtered_unreceived = [
+            r for r in filtered_unreceived
+            if r.get("category") == filter_category
+        ]
+    
+    # 정렬 (발주일 최신순)
+    filtered_unreceived = sorted(
+        filtered_unreceived,
+        key=lambda x: x.get("date", ""),
+        reverse=True
+    )
+    
+    if len(filtered_unreceived) == 0:
+        st.warning("검색 결과가 없습니다.")
+    else:
+        st.info(f"총 {len(filtered_unreceived)}건의 미입고 발주가 있습니다.")
+        
+        # 미입고 발주 목록 테이블 형태로 표시
+        for idx, order in enumerate(filtered_unreceived):
+            order_date = order.get('date', '')
+            received_qty = order.get('received_qty', 0)
+            order_qty = order.get('quantity', 0)
+            remaining_qty = max(0, order_qty - received_qty)
+            product_name = order.get('product_name', '품목명 없음')
+            product_code = order.get('product_code', '코드 없음')
+            category = order.get('category', '-')
+            price = order.get('price', 0)
+            
+            if order_date:
+                try:
+                    date_obj = datetime.strptime(str(order_date), "%Y-%m-%d")
+                    date_str = date_obj.strftime("%Y-%m-%d")
+                except:
+                    date_str = str(order_date)
+            else:
+                date_str = "발주일 없음"
+            
+            # 거래처 정보
+            partner_info = order.get('partner')
+            if partner_info:
+                partner_name = partner_info.get('name', '거래처 없음')
+            else:
+                partner_name = "거래처 없음"
+            
+            with st.expander(
+                f"📦 {product_name} ({product_code}) - 발주일: {date_str} - 남은수량: {remaining_qty}개",
+                expanded=False
+            ):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**품목코드:** {product_code}")
+                    st.write(f"**품목명:** {product_name}")
+                    st.write(f"**카테고리:** {category}")
+                    st.write(f"**거래처:** {partner_name}")
+                with col2:
+                    st.write(f"**발주일:** {date_str}")
+                    st.write(f"**발주 수량:** {order_qty}개")
+                    st.write(f"**입고 완료:** {received_qty}개")
+                    st.write(f"**남은 수량:** {remaining_qty}개")
+                    st.write(f"**발주 단가:** {price:,}원")
+                
+                # 부분 입고 상태 표시
+                if received_qty > 0:
+                    st.warning(f"⚠️ 부분 입고 상태: {received_qty}개 입고 완료, {remaining_qty}개 남음")
+
+st.markdown("---")
+
+# -------------------------------
+# 입고 처리 섹션
+# -------------------------------
+st.subheader("입고 처리")
+
+# 미입고 발주 목록 재계산 (위에서 계산한 것과 동일하게)
+unreceived_orders = unreceived_orders_list.copy()
 
 # 입고 완료 모달 팝오버 (화면 중앙 작은 창) - 페이지 하단에 표시
 # 모달 표시 조건 확인 (안전하게 처리)

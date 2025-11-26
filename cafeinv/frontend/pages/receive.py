@@ -36,29 +36,30 @@ st.markdown("""
         flex-direction: column;
         justify-content: flex-start;
         align-items: center;
-        width: 350px;
-        max-width: 350px;
+        width: 100%;
+        max-width: 240px;
         gap: 30px;
     }
     div[data-testid="column"] {
-        padding-left: 0.25rem !important;
-        padding-right: 0.25rem !important;
+        padding-left: 2.5rem !important;
+        padding-right: 2.5rem !important;
     }
     div[data-testid="column"] > div {
         display: flex;
         align-items: center;
         justify-content: center;
+        margin: 0 auto;
     }
     .action-card-text {
-        font-size: 16px;
-        color: #666;
+        font-size: 14px;
+        color: #999;
         margin: 0 0 10px 0;
         line-height: 1.6;
         font-weight: 500;
     }
     .action-card button {
-        width: 350px !important;
-        max-width: 350px !important;
+        width: 100% !important;
+        max-width: 240px !important;
         margin: 0 auto;
         display: block;
     }
@@ -73,13 +74,13 @@ st.markdown("""
         border: 2px solid #e9ecef;
         border-radius: 12px;
         padding: 20px;
-        margin: 0 0 40px 0;
+        margin: 0 auto 40px auto;
         display: flex;
         align-items: center;
         justify-content: center;
         min-height: 120px;
-        width: 280px;
-        max-width: 280px;
+        width: 200px;
+        max-width: 200px;
         box-sizing: border-box;
     }
     .icon-box .card-icon {
@@ -117,7 +118,7 @@ st.divider()
 # -------------------------------
 # 메인 선택 버튼들 (카드 형태)
 # -------------------------------
-col1, col2, col3, col4 = st.columns([1, 1, 1, 1], gap="small")
+col1, col2, col3, col4 = st.columns([1, 1, 1, 1], gap="medium")
 
 with col1:
     st.markdown('<div class="action-card">', unsafe_allow_html=True)
