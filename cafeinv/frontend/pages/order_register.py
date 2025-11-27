@@ -97,7 +97,11 @@ with title_col:
 with button_col:
     st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
     if st.button("← 뒤로가기", use_container_width=True, key="back_button"):
+<<<<<<< HEAD
         st.switch_page("receive.py")
+=======
+        st.switch_page("pages/receive.py")
+>>>>>>> 2979f1e (발주 등록 시 거래처 정보 저장 개선)
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
@@ -320,21 +324,42 @@ with st.form("order_register_form", clear_on_submit=False):
             elif add_price == 0:
                 st.warning("발주 단가를 입력하세요.")
             else:
-                # 같은 품목이 이미 있는지 확인
+                # 같은 품목이 이미 있는지 확인 (품목코드, 단가, 거래처가 모두 같아야 함)
                 product_code = selected_product["code"]
+                partner_code = selected_partner.get("code", "") if selected_partner else ""
                 existing_idx = None
                 for idx, item in enumerate(st.session_state.order_register_temp_items):
-                    if item["product_code"] == product_code and item["price"] == add_price:
+                    item_partner = item.get("partner")
+                    if isinstance(item_partner, dict):
+                        item_partner_code = item_partner.get("code", "")
+                    else:
+                        item_partner_code = ""
+                    
+                    if (item["product_code"] == product_code and 
+                        item["price"] == add_price and 
+                        item_partner_code == partner_code):
                         existing_idx = idx
                         break
                 
                 if existing_idx is not None:
-                    # 같은 품목이 있으면 수량만 증가
+                    # 같은 품목, 같은 거래처가 있으면 수량만 증가
                     st.session_state.order_register_temp_items[existing_idx]["quantity"] += add_qty
                     st.success(f"✅ {selected_product['name']} ({product_code}) 수량이 {add_qty}개 증가했습니다. (총 {st.session_state.order_register_temp_items[existing_idx]['quantity']}개)")
                 else:
-                    # 새로운 품목 추가
-                    partner_name = selected_partner.get("name", "") if selected_partner else ""
+                    # 새로운 품목 추가 (거래처 전체 정보 저장)
+                    partner_info = None
+                    partner_name = ""
+                    if selected_partner:
+                        partner_info = {
+                            "code": selected_partner.get("code", ""),
+                            "name": selected_partner.get("name", ""),
+                            "business_number": selected_partner.get("business_number", ""),
+                            "representative": selected_partner.get("representative", ""),
+                            "address": selected_partner.get("address", ""),
+                            "phone": selected_partner.get("phone", "")
+                        }
+                        partner_name = selected_partner.get("name", "")
+                    
                     new_item = {
                         "product_code": product_code,
                         "product_name": selected_product["name"],
@@ -343,6 +368,7 @@ with st.form("order_register_form", clear_on_submit=False):
                         "quantity": add_qty,
                         "price": add_price,
                         "partner_name": partner_name,
+                        "partner": partner_info,  # 거래처 전체 정보 저장
                     }
                     st.session_state.order_register_temp_items.append(new_item)
                     st.success(f"✅ {new_item['product_name']} ({new_item['product_code']}) {add_qty}개가 추가되었습니다.")
@@ -434,21 +460,11 @@ if st.session_state.order_register_selected_partner:
                 st.rerun()
         with final_col2:
             if st.button("✅ 발주 등록", use_container_width=True, type="primary"):
-                # 거래처 정보 추가
-                partner_info = None
-                selected_partner = st.session_state.order_register_selected_partner
-                if selected_partner:
-                    partner_info = {
-                        "code": selected_partner.get("code", ""),
-                        "name": selected_partner.get("name", ""),
-                        "business_number": selected_partner.get("business_number", ""),
-                        "representative": selected_partner.get("representative", ""),
-                        "address": selected_partner.get("address", ""),
-                        "phone": selected_partner.get("phone", "")
-                    }
-                
-                # 모든 품목을 발주 목록에 추가
+                # 모든 품목을 발주 목록에 추가 (각 품목에 저장된 거래처 정보 사용)
                 for item in st.session_state.order_register_temp_items:
+                    # 각 품목에 저장된 거래처 정보 사용
+                    item_partner = item.get("partner")
+                    
                     st.session_state.receives.append({
                         "product_code": item["product_code"],
                         "product_name": item["product_name"],
@@ -459,7 +475,7 @@ if st.session_state.order_register_selected_partner:
                         "date": str(st.session_state.order_register_common_date),
                         "delivery_date": str(st.session_state.order_register_common_delivery_date),
                         "note": st.session_state.order_register_common_note,
-                        "partner": partner_info,
+                        "partner": item_partner,  # 각 품목의 거래처 정보 사용
                         "is_received": False,
                         "received_qty": 0
                     })
