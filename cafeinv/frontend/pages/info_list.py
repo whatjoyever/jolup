@@ -730,4 +730,3 @@ with admin_tab:
                                       disabled=True, label_visibility="collapsed")
                 with c9:
                     st.write("")
-

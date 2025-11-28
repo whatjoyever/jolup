@@ -283,7 +283,6 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 # -------------------------------
 # 탭 구조
 # -------------------------------
-# 현재 탭을 session_state에 저장하여 rerun 후에도 유지
 if "current_tab" not in st.session_state:
     st.session_state.current_tab = 0
 
@@ -357,6 +356,13 @@ with category_tab:
             st.write(f"**코드번호:** {last_cat.get('code', '-')}")
         with col2:
             st.write(f"**카테고리명:** {last_cat.get('name', '-')}")
+
+    # ✅ 등록된 전체 카테고리 리스트
+    if st.session_state.categories:
+        st.markdown("---")
+        st.markdown("#### 📚 등록된 전체 카테고리")
+        for idx, cat in enumerate(st.session_state.categories, start=1):
+            st.write(f"{idx}. `{cat.get('code', '-')}` - {cat.get('name', '-')}")
 
 # -------------------------------
 # 품목 등록 탭
@@ -464,6 +470,17 @@ with product_tab:
         with col4:
             st.write(f"**단위:** {last_prod.get('unit', '-')}")
 
+    # ✅ 등록된 전체 품목 리스트
+    if st.session_state.products:
+        st.markdown("---")
+        st.markdown("#### 📚 등록된 전체 품목")
+        for idx, p in enumerate(st.session_state.products, start=1):
+            st.write(
+                f"{idx}. `{p.get('code','-')}` - {p.get('name','-')} "
+                f"(카테고리: {p.get('category','-')}, 단위: {p.get('unit','-')}, "
+                f"상태: {p.get('status','-')}, 안전재고: {p.get('safety','-')})"
+            )
+
 # -------------------------------
 # 거래처 등록 탭
 # -------------------------------
@@ -498,7 +515,7 @@ with partner_tab:
                 st.error("이미 존재하는 거래처 코드입니다.")
             elif p_bus and not re.match(r'^[0-9\-]+$', p_bus):
                 st.error("사업자번호는 숫자와 하이픈(-)만 입력 가능합니다.")
-            elif p_rep and not re.match(r'^[가-힣a-zA-Z\s]+$', p_rep):
+            elif p_rep and not re.match(r'^[가-힣a-zA-Z\\s]+$', p_rep):
                 st.error("대표자 이름은 한글과 영문만 입력 가능합니다.")
             else:
                 new_partner = {
@@ -539,6 +556,17 @@ with partner_tab:
             st.write(f"**대표자:** {last_part.get('representative', '-')}")
         with col3:
             st.write(f"**주소:** {last_part.get('address', '-')}")
+
+    # ✅ 등록된 전체 거래처 리스트
+    if st.session_state.partners:
+        st.markdown("---")
+        st.markdown("#### 📚 등록된 전체 거래처")
+        for idx, p in enumerate(st.session_state.partners, start=1):
+            st.write(
+                f"{idx}. `{p.get('code','-')}` - {p.get('name','-')} "
+                f"(사업자번호: {p.get('business_number','-')}, 대표자: {p.get('representative','-')}, "
+                f"주소: {p.get('address','-')})"
+            )
 
 # -------------------------------
 # 관리자 등록 탭
@@ -625,3 +653,13 @@ with admin_tab:
             st.write(f"**이메일:** {last_admin.get('email', '-')}")
             st.write(f"**전화번호:** {last_admin.get('phone', '-')}")
 
+    # ✅ 등록된 전체 관리자 리스트
+    if st.session_state.admins:
+        st.markdown("---")
+        st.markdown("#### 📚 등록된 전체 관리자")
+        for idx, a in enumerate(st.session_state.admins, start=1):
+            st.write(
+                f"{idx}. `{a.get('emp_no','-')}` - {a.get('name','-')} "
+                f"(성별: {a.get('gender','-')}, 직급: {a.get('position','-')}, "
+                f"관리: {a.get('management_type','-')}, 재직현황: {a.get('status','-')})"
+            )

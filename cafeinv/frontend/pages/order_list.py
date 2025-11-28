@@ -1,6 +1,6 @@
 import os, sys
 import streamlit as st
-from datetime import datetime, date, timedelta
+from datetime import datetime
 import calendar
 from collections import defaultdict
 
@@ -58,186 +58,37 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 # -------------------------------
 # 발주 내역 검색
-# -----------------------
+# -------------------------------
 # 검색 섹션 (Form 형태)
 st.markdown("### 🔍 검색")
+with st.form("order_list_search_form", clear_on_submit=False):
+    st.caption("품목명, 카테고리명, 발주일로 검색 가능")
+    search_query = st.text_input("검색", key="order_list_search",
+                                 label_visibility="collapsed", 
+                                 placeholder="품목명, 카테고리명, 또는 발주일(YYYY-MM-DD) 입력")
+    search_submitted = st.form_submit_button("검색", use_container_width=True, type="primary")
+    
+    # 검색어를 session_state에 저장
+    if search_submitted:
+        if search_query and search_query.strip():
+            st.session_state.order_list_search_term = search_query.strip()
+        else:
+            st.session_state.order_list_search_term = ""
 
 # 검색어 초기화 (세션 상태에 없으면)
 if "order_list_search_term" not in st.session_state:
     st.session_state.order_list_search_term = ""
-if "order_list_date_from" not in st.session_state:
-    st.session_state.order_list_date_from = None
-if "order_list_date_to" not in st.session_state:
-    st.session_state.order_list_date_to = None
 
-# 빠른 기간 선택에 따른 날짜 계산 함수
-def calculate_quick_period_dates(quick_period):
-    """빠른 기간 선택에 따라 시작일과 종료일을 계산"""
-    if quick_period == "전체":
-        return None, None
-    
-    today = datetime.now().date()
-    
-    if quick_period == "오늘":
-        return today, today
-    elif quick_period == "이번 주":
-        # 이번 주 월요일
-        days_since_monday = today.weekday()
-        date_from = today - timedelta(days=days_since_monday)
-        return date_from, today
-    elif quick_period == "이번 달":
-        date_from = today.replace(day=1)
-        return date_from, today
-    elif quick_period == "지난 달":
-        # 지난 달 첫째 날
-        first_day_this_month = today.replace(day=1)
-        last_day_last_month = first_day_this_month - timedelta(days=1)
-        date_from = last_day_last_month.replace(day=1)
-        return date_from, last_day_last_month
-    elif quick_period == "최근 7일":
-        date_from = today - timedelta(days=6)
-        return date_from, today
-    elif quick_period == "최근 30일":
-        date_from = today - timedelta(days=29)
-        return date_from, today
-    return None, None
-
-# 빠른 기간 선택 상태 초기화
-if "order_list_quick_period" not in st.session_state:
-    st.session_state.order_list_quick_period = "전체"
-
-# 빠른 기간 선택 (form 밖에 배치)
-st.markdown("#### 📅 기간별 조회")
-quick_col1, quick_col2 = st.columns([3, 1])
-with quick_col1:
-    st.caption("빠른 기간 선택")
-    quick_period = st.selectbox(
-        "기간 선택",
-        options=["전체", "오늘", "이번 주", "이번 달", "지난 달", "최근 7일", "최근 30일"],
-        index=["전체", "오늘", "이번 주", "이번 달", "지난 달", "최근 7일", "최근 30일"].index(
-            st.session_state.order_list_quick_period
-        ),
-        key="order_list_quick_period_select",
-        label_visibility="collapsed"
-    )
-    
-    # 빠른 선택이 변경되면 날짜 자동 계산
-    if quick_period != st.session_state.order_list_quick_period:
-        st.session_state.order_list_quick_period = quick_period
-        if quick_period != "전체":
-            quick_date_from, quick_date_to = calculate_quick_period_dates(quick_period)
-            st.session_state.order_list_date_from = quick_date_from
-            st.session_state.order_list_date_to = quick_date_to
-        else:
-            st.session_state.order_list_date_from = None
-            st.session_state.order_list_date_to = None
-        st.rerun()
-
-# 빠른 선택에 따른 날짜 계산
-if st.session_state.order_list_quick_period != "전체":
-    quick_date_from, quick_date_to = calculate_quick_period_dates(st.session_state.order_list_quick_period)
-else:
-    quick_date_from, quick_date_to = None, None
-
-# 기본 날짜 값 설정 (세션 상태 우선, 없으면 빠른 선택 날짜)
-default_date_from = st.session_state.order_list_date_from if st.session_state.order_list_date_from else quick_date_from
-default_date_to = st.session_state.order_list_date_to if st.session_state.order_list_date_to else quick_date_to
-
-with st.form("order_list_search_form", clear_on_submit=False):
-    # 수동 날짜 입력
-    date_col1, date_col2 = st.columns([1, 1])
-    with date_col1:
-        st.caption("시작일 (수동 입력)")
-        date_from = st.date_input(
-            "시작일", 
-            value=default_date_from,
-            key="order_list_date_from_input", 
-            label_visibility="collapsed"
-        )
-    with date_col2:
-        st.caption("종료일 (수동 입력)")
-        date_to = st.date_input(
-            "종료일", 
-            value=default_date_to,
-            key="order_list_date_to_input", 
-            label_visibility="collapsed"
-        )
-    
-    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-    
-    # 키워드 검색
-    st.markdown("#### 🔎 키워드 검색")
-    st.caption("품목명, 카테고리명, 거래처명으로 검색 가능")
-    search_query = st.text_input("검색", key="order_list_search",
-                                 label_visibility="collapsed", 
-                                 placeholder="품목명, 카테고리명, 거래처명 입력",
-                                 value=st.session_state.order_list_search_term)
-    
-    search_col1, search_col2 = st.columns([1, 1])
-    with search_col1:
-        search_submitted = st.form_submit_button("검색", use_container_width=True, type="primary")
-    with search_col2:
-        reset_submitted = st.form_submit_button("초기화", use_container_width=True, type="secondary")
-    
-    # 검색 실행
-    if search_submitted:
-        st.session_state.order_list_search_term = search_query.strip() if search_query else ""
-        
-        # 빠른 선택이 "전체"가 아니면 빠른 선택 날짜 사용, 아니면 수동 입력한 날짜 사용
-        if st.session_state.order_list_quick_period != "전체":
-            quick_date_from, quick_date_to = calculate_quick_period_dates(st.session_state.order_list_quick_period)
-            st.session_state.order_list_date_from = quick_date_from
-            st.session_state.order_list_date_to = quick_date_to
-        else:
-            st.session_state.order_list_date_from = date_from if date_from else None
-            st.session_state.order_list_date_to = date_to if date_to else None
-    
-    # 초기화 실행
-    if reset_submitted:
-        st.session_state.order_list_search_term = ""
-        st.session_state.order_list_date_from = None
-        st.session_state.order_list_date_to = None
-        st.session_state.order_list_quick_period = "전체"
-        st.rerun()
-
-# 필터링 로직
+# 통합 검색 필터링 (품목명, 카테고리명, 발주일 중 하나라도 매칭되면 표시)
 filtered_receives = list(st.session_state.receives)
-
-# 키워드 검색 필터링
 if st.session_state.order_list_search_term:
     search_lower = st.session_state.order_list_search_term.lower().strip()
     filtered_receives = [
         r for r in filtered_receives 
         if (search_lower in r.get("product_name", "").lower() or
             search_lower in r.get("category", "").lower() or
-            search_lower in (r.get("partner", {}).get("name", "") if r.get("partner") else "").lower())
+            st.session_state.order_list_search_term in r.get("date", ""))
     ]
-
-# 기간 검색 필터링
-if st.session_state.order_list_date_from and st.session_state.order_list_date_to:
-    date_from = st.session_state.order_list_date_from
-    date_to = st.session_state.order_list_date_to
-    
-    if date_from > date_to:
-        st.warning("⚠️ 시작일이 종료일보다 늦습니다. 올바른 기간을 선택해주세요.")
-    else:
-        period_filtered = []
-        for r in filtered_receives:
-            try:
-                order_date_str = r.get("date", "")
-                if order_date_str:
-                    order_date = datetime.strptime(order_date_str, "%Y-%m-%d").date()
-                    if date_from <= order_date <= date_to:
-                        period_filtered.append(r)
-            except:
-                # 날짜 형식이 잘못된 경우 해당 항목 제외
-                continue
-        filtered_receives = period_filtered
-        
-        # 기간 필터가 적용되었을 때 정보 표시
-        st.info(f"📅 기간: {date_from.strftime('%Y-%m-%d')} ~ {date_to.strftime('%Y-%m-%d')} ({len(filtered_receives)}건)")
-elif st.session_state.order_list_date_from or st.session_state.order_list_date_to:
-    st.warning("⚠️ 시작일과 종료일을 모두 선택해주세요.")
 
 st.markdown("---")
 
@@ -481,4 +332,3 @@ with st.form("order_list_form"):
                         st.write(f"**비고:** {receive['note']}")
                 else:
                     st.write("-")
-
