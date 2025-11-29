@@ -15,86 +15,76 @@ from sidebar import render_sidebar
 st.set_page_config(page_title="입고관리", page_icon="📥", layout="wide")
 render_sidebar("receive")
 
-# -------------------------------
-# CSS — 버튼 넓게 / 간격 넓게 / 카드 균일화
-# -------------------------------
+# 기본 여백/스타일
 st.markdown("""
 <style>
     .main .block-container {
-        max-width: 1200px;
+        max-width: 900px;
         padding-top: 1rem;
         padding-right: 1.5rem;
         padding-left: 1.5rem;
         padding-bottom: 1rem;
     }
-
-    /* 4개 버튼 카드 영역 – 넓은 레이아웃 */
     .action-card {
         background-color: transparent;
+        border: none;
         padding: 0;
-        margin: 20px auto;
+        margin: 10px auto;
+        box-shadow: none;
         text-align: center;
-
         display: flex;
         flex-direction: column;
-        align-items: center;
         justify-content: flex-start;
-
+        align-items: center;
         width: 100%;
-        max-width: 320px;   /* 카드 전체폭 더 넓게 */
-        gap: 22px;          /* 카드 내부 간격 */
+        max-width: 240px;
+        gap: 30px;
     }
-
-    /* 컬럼 좌우 여백 */
     div[data-testid="column"] {
-        padding-left: 1rem !important;
-        padding-right: 1rem !important;
+        padding-left: 2.5rem !important;
+        padding-right: 2.5rem !important;
     }
-
-    /* 설명 텍스트 */
+    div[data-testid="column"] > div {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto;
+    }
     .action-card-text {
-        font-size: 15px;
-        color: #666;
+        font-size: 14px;
+        color: #999;
+        margin: 0 0 10px 0;
+        line-height: 1.6;
         font-weight: 500;
-        margin: 0;
-        padding: 0;
     }
-
-    /* 아이콘 박스 */
+    .action-card button {
+        width: 100% !important;
+        max-width: 240px !important;
+        margin: 0 auto;
+        display: block;
+    }
+    .card-icon {
+        font-size: 60px;
+        text-align: center;
+        margin: 0;
+        display: block;
+    }
     .icon-box {
         background-color: #f8f9fa;
         border: 2px solid #e9ecef;
-        border-radius: 14px;
-
+        border-radius: 12px;
         padding: 20px;
-        width: 100%;
-        max-width: 260px;
-
-        min-height: 130px;
-
+        margin: 0 auto 40px auto;
         display: flex;
-        justify-content: center;
         align-items: center;
+        justify-content: center;
+        min-height: 120px;
+        width: 200px;
+        max-width: 200px;
+        box-sizing: border-box;
     }
-
     .icon-box .card-icon {
-        font-size: 60px;
         margin: 0;
-        padding: 0;
-    }
-
-    /* 버튼 */
-    .action-card button {
-        width: 100% !important;
-        max-width: 260px !important;
-
-        height: 55px !important;
-        margin: 0 auto !important;
-
-        font-size: 18px !important;
-        font-weight: 700 !important;
-
-        border-radius: 12px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -128,7 +118,7 @@ st.divider()
 # -------------------------------
 # 메인 선택 버튼들 (카드 형태)
 # -------------------------------
-col1, col2, col3, col4 = st.columns([1, 1, 1, 1], gap="large")
+col1, col2, col3, col4 = st.columns([1, 1, 1, 1], gap="medium")
 
 with col1:
     st.markdown('<div class="action-card">', unsafe_allow_html=True)

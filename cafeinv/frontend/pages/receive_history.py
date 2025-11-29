@@ -1,10 +1,11 @@
 # ========================================================================
-# PDF 생성 관련 주요 라이브러리
+# 입고 내역 / 거래명세서 / PDF 생성 (receive_history.py)
 # ========================================================================
 import os, sys
 import streamlit as st
+import pandas as pd
 from datetime import datetime, date
-from collections import Counter
+from collections import defaultdict
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib import colors
@@ -22,13 +23,19 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
-# ========================================================================
-# PDF 레이아웃 유틸리티 함수들 (receive.py에서 복사)
-# ========================================================================
+# --- sidebar import 경로 보정 ---
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+if FRONTEND_DIR not in sys.path:
+    sys.path.insert(0, FRONTEND_DIR)
 
-# ------------------------------------------------------------------------
+from sidebar import render_sidebar
+from client import api_get, api_post
+
+
+# ========================================================================
 # 폰트 등록: 한글 출력용
-# ------------------------------------------------------------------------
+# ========================================================================
 def register_korean_font(font_name="KoreanFont", font_path=None):
     """한글 폰트를 등록하고 폰트 이름을 반환"""
     try:
@@ -61,11 +68,30 @@ def register_korean_font(font_name="KoreanFont", font_path=None):
             return "Helvetica"
 
 
-# ------------------------------------------------------------------------
-# 숫자 한글 변환 함수
-# ------------------------------------------------------------------------
+# ========================================================================
+# 숫자 → 한글 금액 (소수/콤마 안전하게 처리)
+# ========================================================================
 def number_to_korean(num):
-    """숫자를 한글 숫자 표기로 변환"""
+    # 1) 먼저 안전하게 정수로 변환
+    try:
+        if isinstance(num, str):
+            cleaned = num.replace(",", "").strip()
+            # 소수점이 있으면 소수점 앞부분만 사용
+            if "." in cleaned:
+                cleaned = cleaned.split(".")[0]
+            if cleaned == "" or cleaned == "-":
+                num_int = 0
+            else:
+                num_int = int(cleaned)
+        else:
+            # float 이면 소수점 버리고 정수로
+            num_int = int(num)
+    except Exception:
+        # 혹시라도 문제가 나면 0 처리
+        num_int = 0
+
+    num = num_int
+
     korean_numbers = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"]
     units = ["", "십", "백", "천"]
     units_10k = ["", "만", "억", "조"]
@@ -77,8 +103,9 @@ def number_to_korean(num):
     num_str = str(num)
     length = len(num_str)
 
+    # 4자리씩 끊어서 처리
     for i in range(0, length, 4):
-        segment = num_str[max(0, length - 4 - i) : length - i]
+        segment = num_str[max(0, length - 4 - i): length - i]
         if not segment:
             continue
         segment_num = int(segment)
@@ -91,24 +118,22 @@ def number_to_korean(num):
             if digit == "0":
                 continue
             digit_num = int(digit)
+            # 십, 백, 천의 '일십' 같은 표현에서 앞의 '일'은 생략
             if digit_num > 1 or j == segment_len - 1:
                 segment_str += korean_numbers[digit_num]
-            if segment_len - j - 1 < len(units):
-                segment_str += units[segment_len - j - 1]
+            segment_str += units[segment_len - j - 1]
 
         unit_index = (length - i - 1) // 4
-        if unit_index > 0:
-            segment_str += units_10k[unit_index]
+        segment_str += units_10k[unit_index]
         result.insert(0, segment_str)
 
     return "".join(result)
 
 
-# ------------------------------------------------------------------------
-# 공통 스타일 팩토리
-# ------------------------------------------------------------------------
+# ========================================================================
+# 공통 스타일
+# ========================================================================
 def _build_styles(font_name):
-    """공통 스타일을 생성하고 반환"""
     styles = getSampleStyleSheet()
     styles.add(
         ParagraphStyle(
@@ -192,13 +217,9 @@ def _build_styles(font_name):
     return styles
 
 
-# ------------------------------------------------------------------------
-# 표 스타일 유틸
-# ------------------------------------------------------------------------
 def _table_style_base(first_col_header_gray=False, header_gray=False):
-    """테이블 기본 스타일 생성"""
     ts = [
-        ("FONT", (0, 0), (-1, -1), "Helvetica", 9),
+        ("FONT", (0, 0), (-1, -1), "KoreanFont", 9),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("GRID", (0, 0), (-1, -1), 1, colors.black),
@@ -222,11 +243,10 @@ def _table_style_base(first_col_header_gray=False, header_gray=False):
     return TableStyle(ts)
 
 
-# ------------------------------------------------------------------------
-# 거래처 정보 테이블 구성
-# ------------------------------------------------------------------------
+# ========================================================================
+# 거래처 정보 테이블 (PDF용)
+# ========================================================================
 def _build_partner_table(partner_info, font_name):
-    """거래처 정보 테이블 생성 (이미지 형식: 왼쪽 라벨 컬럼 회색 배경, 오른쪽 구매처)"""
     labels = ["등록번호", "상호(법인명)", "성명", "사업장주소", "업태", "종목", "전화번호"]
     values = [
         partner_info.get("business_number", "-"),
@@ -276,11 +296,10 @@ def _build_partner_table(partner_info, font_name):
     return left_table, buyer_info
 
 
-# ------------------------------------------------------------------------
-# 상품 테이블 구성
-# ------------------------------------------------------------------------
+# ========================================================================
+# 상품 테이블 (PDF용)
+# ========================================================================
 def _build_items_table(items_data, font_name):
-    """상품 테이블 생성 (한글 폰트 적용 - Paragraph 객체 사용)"""
     table = Table(
         items_data,
         colWidths=[
@@ -292,10 +311,11 @@ def _build_items_table(items_data, font_name):
             24.3 * mm,
             31.5 * mm,
         ],
-    )  # 총 170mm
+    )
     table.setStyle(
         TableStyle(
             [
+                ("FONT", (0, 0), (-1, -1), font_name, 9),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -312,22 +332,156 @@ def _build_items_table(items_data, font_name):
     return table
 
 
-# --- sidebar import 경로 보정 ---
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-FRONTEND_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
-if FRONTEND_DIR not in sys.path:
-    sys.path.insert(0, FRONTEND_DIR)
+# ========================================================================
+# partner 헬퍼들 (코드 → 한글 이름 매핑)
+# ========================================================================
+def get_partner_name(partner):
+    """
+    거래처가 dict 또는 문자열로 들어와도
+    항상 한글 이름(예: '서울커피유통')을 돌려주도록 처리
+    """
+    code = ""
+    name = None
 
-from sidebar import render_sidebar
-from client import api_get, api_post
+    # 1) dict 로 들어온 경우
+    if isinstance(partner, dict):
+        name = partner.get("name") or partner.get("partner_name")
+        code = partner.get("code") or partner.get("partner_code") or ""
+        # 이미 한글 이름이 있다면 그대로 사용
+        if name and not name.startswith("pt_"):
+            return name
 
-# -------------------------------
-# 페이지 설정 & 커스텀 사이드바
-# -------------------------------
+    # 2) 문자열로 들어온 경우
+    elif isinstance(partner, str):
+        s = partner.strip()
+        if not s:
+            return "-"
+        # pt_00n 형태면 코드로 간주
+        if s.startswith("pt_"):
+            code = s
+        else:
+            # 그냥 '서울커피유통' 같이 이름으로 들어온 경우
+            return s
+
+    # 3) 여기까지 왔으면 code 로 세션에 있는 partners 에서 이름 찾기
+    if code:
+        for p in st.session_state.get("partners", []):
+            if p.get("code") == code:
+                return p.get("name", code)
+
+    # 4) 그래도 못 찾으면 남은 값들로 fallback
+    if name:
+        return name
+    if code:
+        return code
+    return "-"
+
+
+def get_partner_code(partner):
+    """
+    partner 객체에서 코드만 뽑고 싶을 때 사용
+    """
+    if isinstance(partner, dict):
+        return partner.get("code") or partner.get("partner_code") or ""
+    elif isinstance(partner, str):
+        return partner.strip()
+    return ""
+
+
+def ensure_partner_dict(partner):
+    """
+    거래처가 코드 문자열 / 이름 문자열 / dict 로 들어와도
+    항상 동일한 dict 형태로 변환해 줌.
+    코드만 있으면 session_state.partners 에서 정보 채워 넣기.
+    """
+    # 1) 이미 dict 인 경우: 이름이 없으면 세션에서 보충
+    if isinstance(partner, dict):
+        code = partner.get("code") or partner.get("partner_code")
+        name = partner.get("name") or partner.get("partner_name")
+        if code and not name:
+            for p in st.session_state.get("partners", []):
+                if p.get("code") == code:
+                    merged = dict(p)
+                    merged.update(partner)
+                    return merged
+        return partner
+
+    # 2) 문자열인 경우
+    if isinstance(partner, str):
+        s = partner.strip()
+        if not s:
+            return None
+
+        # 2-1) 코드(pt_00n) 일 가능성이 높으니 먼저 코드로 조회
+        for p in st.session_state.get("partners", []):
+            if p.get("code") == s:
+                return dict(p)
+
+        # 2-2) 코드로도 못 찾으면 그냥 '이름'으로 취급
+        return {
+            "code": "",
+            "name": s,
+            "business_number": "",
+            "representative": "",
+            "address": "",
+            "phone": "",
+        }
+
+    return None
+
+
+# ========================================================================
+# 수량/단위 변환 (내부 g/mL → 화면에만 kg/L)
+# ========================================================================
+def convert_qty_unit(order_qty, actual_qty, unit):
+    """내부 데이터는 g/mL 유지, 화면에만 kg/L로 변환"""
+    if unit is None:
+        return order_qty, actual_qty, unit
+
+    unit_str = str(unit)
+
+    # g -> kg
+    if unit_str in ["g", "그램"]:
+        if (isinstance(order_qty, (int, float)) and order_qty >= 1000) or (
+            isinstance(actual_qty, (int, float)) and actual_qty >= 1000
+        ):
+            return (
+                round(order_qty / 1000, 3)
+                if isinstance(order_qty, (int, float))
+                else order_qty,
+                round(actual_qty / 1000, 3)
+                if isinstance(actual_qty, (int, float))
+                else actual_qty,
+                "kg",
+            )
+        return order_qty, actual_qty, "g"
+
+    # mL -> L
+    if unit_str.lower() in ["ml", "밀리리터"]:
+        if (isinstance(order_qty, (int, float)) and order_qty >= 1000) or (
+            isinstance(actual_qty, (int, float)) and actual_qty >= 1000
+        ):
+            return (
+                round(order_qty / 1000, 3)
+                if isinstance(order_qty, (int, float))
+                else order_qty,
+                round(actual_qty / 1000, 3)
+                if isinstance(actual_qty, (int, float))
+                else actual_qty,
+                "L",
+            )
+        return order_qty, actual_qty, "mL"
+
+    # 그 외 단위(개, 팩 등)
+    return order_qty, actual_qty, unit_str
+
+
+# ========================================================================
+# Streamlit 기본 설정 & 세션 초기화
+# ========================================================================
 st.set_page_config(page_title="입고 내역", page_icon="📊", layout="wide")
 render_sidebar("receive")
 
-# 기본 여백/스타일
 st.markdown(
     """
 <style>
@@ -344,49 +498,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# -------------------------------
-# 세션 상태 초기화
-# -------------------------------
 if "received_items" not in st.session_state:
     st.session_state.received_items = []
 if "partners" not in st.session_state:
     st.session_state.partners = []
-
-# -------------------------------
-# partner 헬퍼 함수들 (문자열/딕셔너리 모두 처리)
-# -------------------------------
-def get_partner_name(partner):
-    if isinstance(partner, dict):
-        return partner.get("name") or partner.get("partner_name") or "-"
-    elif isinstance(partner, str):
-        return partner or "-"
-    return "-"
+if "releases" not in st.session_state:
+    st.session_state.releases = []
 
 
-def get_partner_code(partner):
-    if isinstance(partner, dict):
-        return partner.get("code") or ""
-    return ""
-
-
-def ensure_partner_dict(partner):
-    if isinstance(partner, dict):
-        return partner
-    if isinstance(partner, str) and partner.strip():
-        return {
-            "code": "",
-            "name": partner,
-            "business_number": "",
-            "representative": "",
-            "address": "",
-            "phone": "",
-        }
-    return None
-
-
-# -------------------------------
+# ========================================================================
 # 헤더 & 뒤로가기 버튼
-# -------------------------------
+# ========================================================================
 title_col, button_col = st.columns([4, 1])
 with title_col:
     st.title("입고 내역")
@@ -397,178 +519,113 @@ with button_col:
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-# -------------------------------
+
+# ========================================================================
 # 입고 내역 섹션
-# -------------------------------
+# ========================================================================
 st.subheader("입고 내역")
 
 if len(st.session_state.received_items) == 0:
     st.warning("입고 처리된 내역이 없습니다.")
 else:
-    # 입고 내역 검색 (Form 형태)
+    # --- 검색 폼 ---
     st.markdown("### 🔍 검색")
     with st.form("receive_history_search_form", clear_on_submit=False):
         st.caption("품목명, 카테고리명, 입고일, 담당자 등으로 검색 가능")
+
+        if "receive_history_search_term" not in st.session_state:
+            st.session_state.receive_history_search_term = ""
+
         search_query = st.text_input(
             "검색",
             key="receive_history_search",
             label_visibility="collapsed",
+            value=st.session_state.receive_history_search_term,
             placeholder="품목명, 카테고리명, 입고일(YYYY-MM-DD), 담당자명 등 입력",
         )
-        submitted_search = st.form_submit_button(
-            "검색", use_container_width=True, type="primary"
-        )
+
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            submitted_search = st.form_submit_button(
+                "검색", use_container_width=True, type="primary"
+            )
+        with c2:
+            reset_search = st.form_submit_button(
+                "검색 초기화", use_container_width=True
+            )
 
         if submitted_search:
-            if search_query and search_query.strip():
-                st.session_state.receive_history_search_term = search_query.strip()
-            else:
-                st.session_state.receive_history_search_term = ""
+            st.session_state.receive_history_search_term = search_query.strip()
+        if reset_search:
+            st.session_state.receive_history_search_term = ""
+            st.experimental_rerun()
 
-    if "receive_history_search_term" not in st.session_state:
-        st.session_state.receive_history_search_term = ""
-
+    # --- 필터링 ---
     filtered_received = list(st.session_state.received_items)
-    if st.session_state.receive_history_search_term:
-        search_lower = st.session_state.receive_history_search_term.lower().strip()
+    term = st.session_state.get("receive_history_search_term", "").strip()
+
+    if term:
+        search_lower = term.lower()
         filtered_received = [
             r
             for r in filtered_received
             if (
                 search_lower in r.get("product_name", "").lower()
                 or search_lower in r.get("category", "").lower()
-                or st.session_state.receive_history_search_term
-                in r.get("receive_date", "")
+                or term in r.get("receive_date", "")
                 or search_lower in r.get("staff", "").lower()
             )
         ]
 
     if len(filtered_received) == 0:
-        if st.session_state.receive_history_search_term:
-            st.warning("검색 결과가 없습니다.")
+        if term:
+            st.warning(
+                "검색 결과가 없습니다. '검색 초기화' 버튼을 눌러 전체 내역을 다시 볼 수 있습니다."
+            )
         else:
             st.warning("입고 처리된 내역이 없습니다.")
     else:
-        if st.session_state.receive_history_search_term:
+        if term:
             st.info(f"검색 결과: {len(filtered_received)}개")
 
-        display_limit = 10
-        items_to_display = filtered_received[:display_limit]
-        remaining_items = (
-            filtered_received[display_limit:]
-            if len(filtered_received) > display_limit
-            else []
-        )
+        # --- 표 데이터 구성 (단위 변환 + 거래처 이름 표시) ---
+        table_rows = []
+        for item in filtered_received:
+            raw_unit = item.get("unit", "-")
+            order_qty = item.get("order_qty", 0) or 0
+            actual_qty = item.get("actual_qty", 0) or 0
 
-        # 처음 10개 항목
-        for idx, item in enumerate(items_to_display):
-            with st.expander(
-                f"{item['product_name']} ({item['product_code']}) - 입고수량: {item.get('actual_qty', 0)}개 - {item.get('receive_date', '-')}",
-                expanded=False,
-            ):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**품목코드:** {item.get('product_code', '-')}")
-                    st.write(f"**품목명:** {item.get('product_name', '-')}")
-                    st.write(f"**발주 수량:** {item.get('order_qty', 0)}개")
-                    st.write(f"**입고 수량:** {item.get('actual_qty', 0)}개")
-                    st.write(f"**발주 단가:** {item.get('order_price', 0):,}원")
-                    st.write(f"**입고 단가:** {item.get('actual_price', 0):,}원")
-                with col2:
-                    st.write(f"**입고일:** {item.get('receive_date', '-')}")
-                    st.write(f"**유통기한:** {item.get('expiry', '-')}")
-                    st.write(f"**담당자:** {item.get('staff', '-')}")
-                    if item.get("special_note"):
-                        st.write(f"**특이사항:** {item.get('special_note', '-')}")
-                    partner_name = get_partner_name(item.get("partner"))
-                    st.write(f"**거래처:** {partner_name}")
+            disp_order_qty, disp_actual_qty, disp_unit = convert_qty_unit(
+                order_qty, actual_qty, raw_unit
+            )
 
-        # 10개 이상이면 더보기
-        if len(remaining_items) > 0:
-            st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
-            more_button_col1, more_button_col2, more_button_col3 = st.columns([1, 1, 1])
-            with more_button_col2:
-                if "show_more_received_items" not in st.session_state:
-                    st.session_state.show_more_received_items = False
+            table_rows.append(
+                {
+                    "품목코드": item.get("product_code", "-"),
+                    "품목명": item.get("product_name", "-"),
+                    "카테고리": item.get("category", "-"),
+                    "단위": disp_unit,
+                    "발주 수량": disp_order_qty,
+                    "입고 수량": disp_actual_qty,
+                    "발주 단가(원)": item.get("order_price", 0),
+                    "입고 단가(원)": item.get("actual_price", 0),
+                    "유통기한": item.get("expiry", "-"),
+                    "담당자": item.get("staff", "-"),
+                    "거래처": get_partner_name(item.get("partner")),
+                }
+            )
 
-                if st.button(
-                    f"더보기 ({len(remaining_items)}개)",
-                    key="show_more_received_btn",
-                    use_container_width=True,
-                    type="secondary",
-                ):
-                    st.session_state.show_more_received_items = (
-                        not st.session_state.show_more_received_items
-                    )
-                    st.rerun()
+        df_receive = pd.DataFrame(table_rows)
 
-                if st.session_state.show_more_received_items:
-                    st.markdown(
-                        "<div style='height: 16px'></div>", unsafe_allow_html=True
-                    )
-                    with st.expander(
-                        f"📋 나머지 입고 내역 ({len(remaining_items)}개)", expanded=True
-                    ):
-                        for idx, item in enumerate(remaining_items):
-                            with st.expander(
-                                f"{item['product_name']} ({item['product_code']}) - 입고수량: {item.get('actual_qty', 0)}개 - {item.get('receive_date', '-')}",
-                                expanded=False,
-                            ):
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    st.write(
-                                        f"**품목코드:** {item.get('product_code', '-')}"
-                                    )
-                                    st.write(
-                                        f"**품목명:** {item.get('product_name', '-')}"
-                                    )
-                                    st.write(
-                                        f"**발주 수량:** {item.get('order_qty', 0)}개"
-                                    )
-                                    st.write(
-                                        f"**입고 수량:** {item.get('actual_qty', 0)}개"
-                                    )
-                                    st.write(
-                                        f"**발주 단가:** {item.get('order_price', 0):,}원"
-                                    )
-                                    st.write(
-                                        f"**입고 단가:** {item.get('actual_price', 0):,}원"
-                                    )
-                                with col2:
-                                    st.write(
-                                        f"**입고일:** {item.get('receive_date', '-')}"
-                                    )
-                                    st.write(
-                                        f"**유통기한:** {item.get('expiry', '-')}"
-                                    )
-                                    st.write(f"**담당자:** {item.get('staff', '-')}")
-                                    if item.get("special_note"):
-                                        st.write(
-                                            f"**특이사항:** {item.get('special_note', '-')}"
-                                        )
-                                    partner_name = get_partner_name(item.get("partner"))
-                                    st.write(f"**거래처:** {partner_name}")
-                        st.markdown(
-                            "<div style='height: 16px'></div>", unsafe_allow_html=True
-                        )
-                        close_col1, close_col2, close_col3 = st.columns([1, 1, 1])
-                        with close_col2:
-                            if st.button(
-                                "닫기",
-                                key="close_more_received_btn",
-                                use_container_width=True,
-                            ):
-                                st.session_state.show_more_received_items = False
-                                st.rerun()
+        st.markdown("### 📊 입고 내역 (표 보기)")
+        st.dataframe(df_receive, use_container_width=True, hide_index=True)
 
-# -------------------------------
+
+# ========================================================================
 # 거래명세서 섹션 (입출고 통합)
-# -------------------------------
+# ========================================================================
 st.markdown("---")
 st.subheader("거래명세서 내역 (입출고 통합)")
-
-if "releases" not in st.session_state:
-    st.session_state.releases = []
 
 all_transactions = []
 for item in st.session_state.received_items:
@@ -601,7 +658,7 @@ for item in st.session_state.releases:
 if len(all_transactions) == 0:
     st.warning("거래 내역이 없습니다. 거래명세서를 생성할 수 없습니다.")
 else:
-    # 간편 설정 처리
+    # 간편 기간 설정
     if "invoice_quick_period" in st.session_state:
         quick_period = st.session_state.invoice_quick_period
         if quick_period != "직접 선택":
@@ -656,7 +713,7 @@ else:
                 st.session_state.invoice_quick_period_applied = quick_period
                 st.rerun()
 
-    # 검색 조건 설정
+    # --------------------- 거래명세서 검색 폼 ---------------------
     with st.form("invoice_search_form", clear_on_submit=False):
         st.markdown("#### 🔍 거래명세서 검색 조건")
 
@@ -691,7 +748,7 @@ else:
                 if partner_key not in partner_dict:
                     partner_dict[partner_key] = partner
 
-        if "partners" in st.session_state and len(st.session_state.partners) > 0:
+        if len(st.session_state.partners) > 0:
             for p in st.session_state.partners:
                 key = f"{p.get('code', '')}_{p.get('name', '')}"
                 if key not in partner_dict:
@@ -757,14 +814,14 @@ else:
             "🔍 조회하기", use_container_width=True, type="primary"
         )
 
-    # 검색 실행
+    # --------------------- 거래명세서 필터링 ---------------------
     if search_submitted or "invoice_search_executed" not in st.session_state:
         st.session_state.invoice_search_executed = True
 
         filtered_transactions = list(all_transactions)
 
         if start_date and end_date:
-            temp_filtered = []
+            tmp = []
             for t in filtered_transactions:
                 trans_date_str = t.get("transaction_date")
                 if trans_date_str:
@@ -773,10 +830,10 @@ else:
                             trans_date_str, "%Y-%m-%d"
                         ).date()
                         if start_date <= trans_date <= end_date:
-                            temp_filtered.append(t)
+                            tmp.append(t)
                     except:
                         pass
-            filtered_transactions = temp_filtered
+            filtered_transactions = tmp
 
         if selected_partner_codes is not None:
             filtered_transactions = [
@@ -808,15 +865,16 @@ else:
 
         st.session_state.filtered_invoice_transactions = filtered_transactions
     else:
-        filtered_transactions = st.session_state.get("filtered_invoice_transactions", [])
+        filtered_transactions = st.session_state.get(
+            "filtered_invoice_transactions", []
+        )
 
     if len(filtered_transactions) == 0:
         st.warning("검색 조건에 맞는 거래 내역이 없습니다.")
     else:
         st.success(f"검색 결과: {len(filtered_transactions)}건")
 
-        from collections import defaultdict
-
+        # --------------------- 거래처별 그룹 ---------------------
         transactions_by_partner = defaultdict(list)
         transactions_without_partner = []
 
@@ -825,9 +883,9 @@ else:
             partner = ensure_partner_dict(partner_raw)
             if partner and (get_partner_code(partner) or get_partner_name(partner) != "-"):
                 partner_key = f"{get_partner_name(partner)} ({get_partner_code(partner)})"
-                trans_with_partner = dict(trans)
-                trans_with_partner["partner"] = partner
-                transactions_by_partner[partner_key].append(trans_with_partner)
+                t_copy = dict(trans)
+                t_copy["partner"] = partner
+                transactions_by_partner[partner_key].append(t_copy)
             else:
                 transactions_without_partner.append(trans)
 
@@ -858,6 +916,7 @@ else:
             f"{start_date} ~ {end_date}" if start_date and end_date else "전체"
         )
 
+        # --------------------- 개별 거래처 PDF 함수 ---------------------
         def generate_invoice_pdf_local(
             invoice_items, invoice_date, partner_info, show_partner_info=False
         ):
@@ -882,7 +941,7 @@ else:
             else:
                 try:
                     if " ~ " in invoice_date:
-                        date_str = invoice_date.replace(" ~ ", " ~ ")
+                        date_str = invoice_date
                     else:
                         date_obj = datetime.strptime(invoice_date, "%Y-%m-%d")
                         date_str = date_obj.strftime("%Y년 %m월 %d일")
@@ -935,14 +994,24 @@ else:
 
             for item in invoice_items:
                 product_name = item.get("product_name", "-")
-                spec = item.get("category", "") or item.get("unit", "") or "-"
-                qty = item.get("qty", 0) or item.get("actual_qty", 0)
-                price = item.get("price", 0) or item.get("actual_price", 0)
+
+                raw_unit = item.get("unit", "")
+                raw_qty = item.get("qty", 0) or item.get("actual_qty", 0) or 0
+                _, conv_qty, conv_unit = convert_qty_unit(raw_qty, raw_qty, raw_unit)
+
+                category = item.get("category", "") or ""
+                if category and conv_unit:
+                    spec = f"{category} / {conv_unit}"
+                elif category:
+                    spec = category
+                else:
+                    spec = conv_unit or "-"
+
+                qty = conv_qty
+                price = item.get("price", 0) or item.get("actual_price", 0) or 0
                 supply_amount = qty * price
                 vat_amount = int(supply_amount * 0.1)
-                note = (
-                    item.get("special_note", "") or item.get("note", "") or "-"
-                )
+                note = item.get("special_note", "") or item.get("note", "") or "-"
 
                 if show_partner_info:
                     item_partner = ensure_partner_dict(item.get("partner"))
@@ -1007,7 +1076,6 @@ else:
                 )
 
             items_table = _build_items_table(items_data, font_name)
-
             center_items_wrapper_data = [[items_table]]
             center_items_wrapper = Table(center_items_wrapper_data, colWidths=[170 * mm])
             center_items_wrapper.setStyle(
@@ -1096,11 +1164,11 @@ else:
             buffer.seek(0)
             return buffer
 
-        # 거래처별 표 + PDF
-        for partner_group_index, (partner_name, partner_transactions) in enumerate(
+        # --------------------- 거래처별 표 + 다운로드 버튼 ---------------------
+        for idx_p, (partner_name, partner_transactions) in enumerate(
             transactions_by_partner.items()
         ):
-            st.markdown(f"---")
+            st.markdown("---")
             st.markdown(f"### 🏢 {partner_name}")
             st.info(f"거래처: {partner_name} | 총 {len(partner_transactions)}건")
 
@@ -1126,18 +1194,29 @@ else:
 
             partner_supply = 0
             partner_vat = 0
-            for idx, trans in enumerate(partner_transactions):
+
+            for trans in partner_transactions:
                 trans_date = trans.get("transaction_date", "-")
                 product_name = trans.get("product_name", "-")
-                spec = trans.get("category", "") or trans.get("unit", "") or "-"
-                qty = trans.get("qty", 0)
-                price = trans.get("price", 0)
+
+                raw_unit = trans.get("unit", "")
+                raw_qty = trans.get("qty", 0) or trans.get("actual_qty", 0) or 0
+                _, conv_qty, conv_unit = convert_qty_unit(raw_qty, raw_qty, raw_unit)
+
+                category = trans.get("category", "") or ""
+                if category and conv_unit:
+                    spec = f"{category} / {conv_unit}"
+                elif category:
+                    spec = category
+                else:
+                    spec = conv_unit or "-"
+
+                qty = conv_qty
+                price = trans.get("price", 0) or trans.get("actual_price", 0) or 0
                 supply_amount = qty * price
                 vat_amount = int(supply_amount * 0.1)
                 trans_type = trans.get("transaction_type", "-")
-                note = (
-                    trans.get("special_note", "") or trans.get("note", "") or "-"
-                )
+                note = trans.get("special_note", "") or trans.get("note", "") or "-"
 
                 partner_supply += supply_amount
                 partner_vat += vat_amount
@@ -1193,18 +1272,17 @@ else:
                 date_part = selected_date.replace(" ~ ", "_").replace("-", "")
                 filename = f"거래명세서_{partner_name}_{date_part}.pdf"
 
-            # 🔐 여기서 key를 전역 고유하게: partner_group_index + idx 조합 사용
             st.download_button(
                 label=f"📥 {partner_name} 거래명세서 PDF 다운로드",
                 data=pdf_buffer,
                 file_name=filename,
                 mime="application/pdf",
                 use_container_width=True,
-                key=f"pdf_download_{partner_group_index}_{idx}",
+                key=f"pdf_download_{idx_p}",
             )
             st.markdown("<div style='height: 16px'></div>", unsafe_allow_html=True)
 
-        # 거래처 없는 내역
+        # --------------------- 거래처 미지정 내역 ---------------------
         if transactions_without_partner:
             st.markdown("---")
             st.markdown("### ❓ 거래처 미지정")
@@ -1232,18 +1310,28 @@ else:
             with header_cols[8]:
                 st.write("**비고**")
 
-            for idx, trans in enumerate(transactions_without_partner):
+            for trans in transactions_without_partner:
                 trans_date = trans.get("transaction_date", "-")
                 product_name = trans.get("product_name", "-")
-                spec = trans.get("category", "") or trans.get("unit", "") or "-"
-                qty = trans.get("qty", 0)
-                price = trans.get("price", 0)
+
+                raw_unit = trans.get("unit", "")
+                raw_qty = trans.get("qty", 0) or trans.get("actual_qty", 0) or 0
+                _, conv_qty, conv_unit = convert_qty_unit(raw_qty, raw_qty, raw_unit)
+
+                category = trans.get("category", "") or ""
+                if category and conv_unit:
+                    spec = f"{category} / {conv_unit}"
+                elif category:
+                    spec = category
+                else:
+                    spec = conv_unit or "-"
+
+                qty = conv_qty
+                price = trans.get("price", 0) or trans.get("actual_price", 0) or 0
                 supply_amount = qty * price
                 vat_amount = int(supply_amount * 0.1)
                 trans_type = trans.get("transaction_type", "-")
-                note = (
-                    trans.get("special_note", "") or trans.get("note", "") or "-"
-                )
+                note = trans.get("special_note", "") or trans.get("note", "") or "-"
 
                 total_supply_all += supply_amount
                 total_vat_all += vat_amount
@@ -1268,7 +1356,7 @@ else:
                 with row_cols[8]:
                     st.write(note)
 
-        # 전체 합계
+        # --------------------- 전체 합계 ---------------------
         st.markdown("---")
         st.markdown("#### 💰 전체 합계 정보")
 
@@ -1293,7 +1381,7 @@ else:
             placeholder="입금 계좌, 특이사항 등을 입력하세요.",
         )
 
-        # PDF용 그룹화
+        # --------------------- 전체 거래명세서 PDF (모든 거래처) ---------------------
         pdf_partner_groups = {}
         pdf_no_partner_items = []
 
@@ -1306,26 +1394,11 @@ else:
                         "partner_info": partner,
                         "items": [],
                     }
-                trans_with_partner = dict(trans)
-                trans_with_partner["partner"] = partner
-                pdf_partner_groups[partner_code]["items"].append(trans_with_partner)
+                t_copy = dict(trans)
+                t_copy["partner"] = partner
+                pdf_partner_groups[partner_code]["items"].append(t_copy)
             else:
                 pdf_no_partner_items.append(trans)
-
-        st.markdown("---")
-        st.markdown("#### 📄 전체 거래명세서 PDF 생성")
-
-        if len(pdf_partner_groups) > 0:
-            default_partner_for_all = list(pdf_partner_groups.values())[0]["partner_info"]
-        else:
-            default_partner_for_all = {
-                "code": "",
-                "name": "전체 거래처",
-                "business_number": "",
-                "representative": "",
-                "address": "",
-                "phone": "",
-            }
 
         def generate_all_partners_invoice_pdf(
             all_transactions, invoice_date, partner_groups, no_partner_items
@@ -1351,13 +1424,14 @@ else:
             else:
                 try:
                     if " ~ " in invoice_date:
-                        date_str = invoice_date.replace(" ~ ", " ~ ")
+                        date_str = invoice_date
                     else:
                         date_obj = datetime.strptime(invoice_date, "%Y-%m-%d")
                         date_str = date_obj.strftime("%Y년 %m월 %d일")
                 except:
                     date_str = invoice_date
 
+            # 거래처별 페이지
             for partner_code, partner_data in partner_groups.items():
                 partner_info = partner_data["partner_info"]
                 partner_items = partner_data["items"]
@@ -1446,14 +1520,26 @@ else:
 
                 for item in partner_items:
                     product_name = item.get("product_name", "-")
-                    spec = item.get("category", "") or item.get("unit", "") or "-"
-                    qty = item.get("qty", 0) or item.get("actual_qty", 0)
-                    price = item.get("price", 0) or item.get("actual_price", 0)
+
+                    raw_unit = item.get("unit", "")
+                    raw_qty = item.get("qty", 0) or item.get("actual_qty", 0) or 0
+                    _, conv_qty, conv_unit = convert_qty_unit(
+                        raw_qty, raw_qty, raw_unit
+                    )
+
+                    category = item.get("category", "") or ""
+                    if category and conv_unit:
+                        spec = f"{category} / {conv_unit}"
+                    elif category:
+                        spec = category
+                    else:
+                        spec = conv_unit or "-"
+
+                    qty = conv_qty
+                    price = item.get("price", 0) or item.get("actual_price", 0) or 0
                     supply_amount = qty * price
                     vat_amount = int(supply_amount * 0.1)
-                    note = (
-                        item.get("special_note", "") or item.get("note", "") or "-"
-                    )
+                    note = item.get("special_note", "") or item.get("note", "") or "-"
 
                     total_amount += supply_amount
                     total_vat += vat_amount
@@ -1518,7 +1604,6 @@ else:
                     )
 
                 items_table = _build_items_table(items_data, font_name)
-
                 center_items_wrapper_data = [[items_table]]
                 center_items_wrapper = Table(
                     center_items_wrapper_data, colWidths=[170 * mm]
@@ -1607,7 +1692,7 @@ else:
                 )
                 elements.append(Paragraph("[결제계좌]-", account_style))
 
-            # 미지정 거래처 페이지
+            # 거래처 미지정 페이지
             if no_partner_items:
                 if elements:
                     elements.append(PageBreak())
@@ -1702,14 +1787,26 @@ else:
 
                 for item in no_partner_items:
                     product_name = item.get("product_name", "-")
-                    spec = item.get("category", "") or item.get("unit", "") or "-"
-                    qty = item.get("qty", 0) or item.get("actual_qty", 0)
-                    price = item.get("price", 0) or item.get("actual_price", 0)
+
+                    raw_unit = item.get("unit", "")
+                    raw_qty = item.get("qty", 0) or item.get("actual_qty", 0) or 0
+                    _, conv_qty, conv_unit = convert_qty_unit(
+                        raw_qty, raw_qty, raw_unit
+                    )
+
+                    category = item.get("category", "") or ""
+                    if category and conv_unit:
+                        spec = f"{category} / {conv_unit}"
+                    elif category:
+                        spec = category
+                    else:
+                        spec = conv_unit or "-"
+
+                    qty = conv_qty
+                    price = item.get("price", 0) or item.get("actual_price", 0) or 0
                     supply_amount = qty * price
                     vat_amount = int(supply_amount * 0.1)
-                    note = (
-                        item.get("special_note", "") or item.get("note", "") or "-"
-                    )
+                    note = item.get("special_note", "") or item.get("note", "") or "-"
 
                     total_amount += supply_amount
                     total_vat += vat_amount

@@ -97,7 +97,7 @@ with title_col:
 with button_col:
     st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
     if st.button("← 뒤로가기", use_container_width=True, key="back_button"):
-        st.switch_page("pages/receive.py")
+        st.switch_page("receive.py")
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
