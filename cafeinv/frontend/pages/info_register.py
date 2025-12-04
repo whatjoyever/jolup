@@ -1,6 +1,7 @@
 import os, sys
 import streamlit as st
 import re
+import pandas as pd
 
 # --- sidebar import 경로 보정 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -361,8 +362,29 @@ with category_tab:
     if st.session_state.categories:
         st.markdown("---")
         st.markdown("#### 📚 등록된 전체 카테고리")
+        
+        # 카테고리 데이터를 DataFrame으로 변환
+        categories_data = []
         for idx, cat in enumerate(st.session_state.categories, start=1):
-            st.write(f"{idx}. `{cat.get('code', '-')}` - {cat.get('name', '-')}")
+            categories_data.append({
+                "번호": str(idx),  # 문자열로 변환하여 좌측 정렬
+                "코드번호": cat.get('code', '-'),
+                "카테고리명": cat.get('name', '-')
+            })
+        
+        df_categories = pd.DataFrame(categories_data)
+        
+        # 표 형식으로 표시
+        st.dataframe(
+            df_categories,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "번호": st.column_config.TextColumn("번호", width="small"),
+                "코드번호": st.column_config.TextColumn("코드번호", width="medium"),
+                "카테고리명": st.column_config.TextColumn("카테고리명", width="large")
+            }
+        )
 
 # -------------------------------
 # 품목 등록 탭
@@ -474,12 +496,37 @@ with product_tab:
     if st.session_state.products:
         st.markdown("---")
         st.markdown("#### 📚 등록된 전체 품목")
+        
+        # 품목 데이터를 DataFrame으로 변환
+        products_data = []
         for idx, p in enumerate(st.session_state.products, start=1):
-            st.write(
-                f"{idx}. `{p.get('code','-')}` - {p.get('name','-')} "
-                f"(카테고리: {p.get('category','-')}, 단위: {p.get('unit','-')}, "
-                f"상태: {p.get('status','-')}, 안전재고: {p.get('safety','-')})"
-            )
+            products_data.append({
+                "번호": str(idx),  # 문자열로 변환하여 좌측 정렬
+                "코드번호": p.get('code', '-'),
+                "품목명": p.get('name', '-'),
+                "카테고리": p.get('category', '-'),
+                "단위": p.get('unit', '-'),
+                "상태": p.get('status', '-'),
+                "안전재고": p.get('safety', '-')
+            })
+        
+        df_products = pd.DataFrame(products_data)
+        
+        # 표 형식으로 표시
+        st.dataframe(
+            df_products,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "번호": st.column_config.TextColumn("번호", width="small"),
+                "코드번호": st.column_config.TextColumn("코드번호", width="medium"),
+                "품목명": st.column_config.TextColumn("품목명", width="large"),
+                "카테고리": st.column_config.TextColumn("카테고리", width="medium"),
+                "단위": st.column_config.TextColumn("단위", width="small"),
+                "상태": st.column_config.TextColumn("상태", width="small"),
+                "안전재고": st.column_config.TextColumn("안전재고", width="small")
+            }
+        )
 
 # -------------------------------
 # 거래처 등록 탭
@@ -561,12 +608,35 @@ with partner_tab:
     if st.session_state.partners:
         st.markdown("---")
         st.markdown("#### 📚 등록된 전체 거래처")
+        
+        # 거래처 데이터를 DataFrame으로 변환 (등록순으로 표시)
+        partners_data = []
         for idx, p in enumerate(st.session_state.partners, start=1):
-            st.write(
-                f"{idx}. `{p.get('code','-')}` - {p.get('name','-')} "
-                f"(사업자번호: {p.get('business_number','-')}, 대표자: {p.get('representative','-')}, "
-                f"주소: {p.get('address','-')})"
-            )
+            partners_data.append({
+                "번호": str(idx),  # 문자열로 변환하여 좌측 정렬
+                "거래처 코드": p.get('code', '-'),
+                "거래처명": p.get('name', '-'),
+                "사업자번호": p.get('business_number', '-'),
+                "대표자": p.get('representative', '-'),
+                "주소": p.get('address', '-')
+            })
+        
+        df_partners = pd.DataFrame(partners_data)
+        
+        # 표 형식으로 표시
+        st.dataframe(
+            df_partners,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "번호": st.column_config.TextColumn("번호", width="small"),
+                "거래처 코드": st.column_config.TextColumn("거래처 코드", width="medium"),
+                "거래처명": st.column_config.TextColumn("거래처명", width="medium"),
+                "사업자번호": st.column_config.TextColumn("사업자번호", width="medium"),
+                "대표자": st.column_config.TextColumn("대표자", width="small"),
+                "주소": st.column_config.TextColumn("주소", width="large")
+            }
+        )
 
 # -------------------------------
 # 관리자 등록 탭

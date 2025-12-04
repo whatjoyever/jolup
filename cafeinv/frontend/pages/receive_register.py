@@ -629,6 +629,18 @@ else:
                             if new_received_qty > order_qty:
                                 st.warning(f"⚠️ 입고 수량이 발주 수량을 초과합니다. 발주 수량: {order_qty}개, 이미 입고된 수량: {current_received_qty}개, 현재 입고 수량: {actual_qty}개")
                             else:
+                                # 발주일 가져오기
+                                order_date_value = selected_order.get("date", "")
+                                if order_date_value:
+                                    if isinstance(order_date_value, date):
+                                        order_date_str = str(order_date_value)
+                                    elif isinstance(order_date_value, str):
+                                        order_date_str = order_date_value[:10] if len(order_date_value) >= 10 else order_date_value
+                                    else:
+                                        order_date_str = str(order_date_value)
+                                else:
+                                    order_date_str = ""
+                                
                                 received_item = {
                                     "product_code": selected_order.get("product_code", ""),
                                     "product_name": selected_order.get("product_name", ""),
@@ -640,6 +652,7 @@ else:
                                     "remaining_qty": order_qty - new_received_qty,  # 남은 입고 수량
                                     "order_price": order_price,
                                     "actual_price": actual_price,
+                                    "order_date": order_date_str,  # 발주일 (발주 등록에서 가져옴)
                                     "receive_date": str(receive_date),
                                     "expiry": str(receive_expiry),
                                     "staff": staff_name,
