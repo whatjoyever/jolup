@@ -42,7 +42,12 @@ st.markdown("""
 
         width: 100%;
         max-width: 320px;   /* 카드 전체폭 더 넓게 */
-        gap: 22px;          /* 카드 내부 간격 */
+        gap: 28px;          /* 카드 내부 간격 (기본정보와 동일) */
+    }
+    
+    /* 아이콘과 버튼 사이 여백 */
+    .icon-box {
+        margin-bottom: 20px !important;
     }
 
     /* 컬럼 좌우 여백 */
@@ -134,6 +139,7 @@ with col1:
     st.markdown('<div class="action-card">', unsafe_allow_html=True)
     st.markdown('<p class="action-card-text">▼ 발주 등록 페이지로 이동</p>', unsafe_allow_html=True)
     st.markdown('<div class="icon-box"><div class="card-icon">📝</div></div>', unsafe_allow_html=True)
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
     if st.button("발주 등록", key="order_register_btn", use_container_width=False, type="primary"):
         st.switch_page("pages/order_register.py")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -142,6 +148,7 @@ with col2:
     st.markdown('<div class="action-card">', unsafe_allow_html=True)
     st.markdown('<p class="action-card-text">▼ 발주 목록 확인 페이지로 이동</p>', unsafe_allow_html=True)
     st.markdown('<div class="icon-box"><div class="card-icon">📋</div></div>', unsafe_allow_html=True)
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
     if st.button("발주 목록", key="order_list_btn", use_container_width=False, type="primary"):
         st.switch_page("pages/order_list.py")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -150,6 +157,7 @@ with col3:
     st.markdown('<div class="action-card">', unsafe_allow_html=True)
     st.markdown('<p class="action-card-text">▼ 입고 등록 페이지로 이동</p>', unsafe_allow_html=True)
     st.markdown('<div class="icon-box"><div class="card-icon">📦</div></div>', unsafe_allow_html=True)
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
     if st.button("입고 등록", key="receive_register_btn", use_container_width=False, type="primary"):
         st.switch_page("pages/receive_register.py")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -158,6 +166,7 @@ with col4:
     st.markdown('<div class="action-card">', unsafe_allow_html=True)
     st.markdown('<p class="action-card-text">▼ 입고 내역 확인 페이지로 이동</p>', unsafe_allow_html=True)
     st.markdown('<div class="icon-box"><div class="card-icon">📊</div></div>', unsafe_allow_html=True)
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
     if st.button("입고 내역", key="receive_history_btn", use_container_width=False, type="primary"):
         st.switch_page("pages/receive_history.py")
     st.markdown('</div>', unsafe_allow_html=True)

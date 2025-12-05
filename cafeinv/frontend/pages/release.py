@@ -3,6 +3,7 @@ import os
 import sys
 from datetime import datetime
 
+import pandas as pd
 import streamlit as st
 
 # -----------------------------
@@ -246,6 +247,16 @@ with tab_register:
 
                     required_qty = base_qty * cups  # 레시피 단위 기준 필요량
 
+                    # 물과 얼음은 재고 부족 체크 제외
+                    name_lower = (name or "").lower()
+                    code_lower = (code or "").lower()
+                    is_water_or_ice = (
+                        "물" in name_lower or "water" in name_lower or
+                        "얼음" in name_lower or "ice" in name_lower or
+                        "물" in code_lower or "water" in code_lower or
+                        "얼음" in code_lower or "ice" in code_lower
+                    )
+
                     # 기준 단위 기준 재고
                     current_stock_base, base_unit = get_stock_by_code(code)
                     # 화면 표시는 레시피 단위로 변환해서 보여줌
@@ -263,7 +274,8 @@ with tab_register:
                         f"현재 재고: {current_stock_for_display:.2f}{recipe_unit}"
                     )
 
-                    if current_stock_base < required_in_base:
+                    # 물과 얼음이 아니고 재고가 부족한 경우에만 insufficient 처리
+                    if not is_water_or_ice and current_stock_base < required_in_base:
                         insufficient = True
                         st.markdown(
                             f"<span style='color:#f97373;'>{line}  (재고 부족)</span>",
@@ -358,11 +370,22 @@ with tab_register:
 
             reason = st.text_input("출고 사유", placeholder="예: 폐기, 샘플 사용, 분실 등")
 
+            # 물과 얼음은 재고 부족 체크 제외
+            name_lower = (name or "").lower()
+            code_lower = (code or "").lower()
+            is_water_or_ice = (
+                "물" in name_lower or "water" in name_lower or
+                "얼음" in name_lower or "ice" in name_lower or
+                "물" in code_lower or "water" in code_lower or
+                "얼음" in code_lower or "ice" in code_lower
+            )
+
             # 재고 체크: 입력 단위를 기준 단위로 변환해서 비교
             required_in_base = convert_qty(qty, unit, base_unit)
-            disabled = qty <= 0 or current_stock_base < required_in_base
+            # 물과 얼음이 아니고 재고가 부족한 경우에만 disabled 처리
+            disabled = qty <= 0 or (not is_water_or_ice and current_stock_base < required_in_base)
 
-            if qty > 0 and current_stock_base < required_in_base:
+            if qty > 0 and not is_water_or_ice and current_stock_base < required_in_base:
                 st.warning(
                     f"재고보다 많은 수량을 출고할 수 없습니다. "
                     f"(요청: {qty}{unit} ≒ {required_in_base:.2f}{base_unit}, "
@@ -404,30 +427,48 @@ with tab_history:
         )
 
         st.markdown("#### 출고 목록")
-        st.write("")
-
+        
+        # 표 형식으로 표시
+        releases_data = []
         for r in releases_sorted:
-            created = r.get("created_at")
-            code = r.get("product_code")
-            name = r.get("product_name")
-            qty = r.get("qty")
+            created = r.get("created_at", "")
+            code = r.get("product_code", "-")
+            name = r.get("product_name", "-")
+            qty = r.get("qty", 0)
             unit = r.get("unit", "")
-            tx_type = r.get("tx_type")
-            reason = r.get("reason")
-            menu_name = r.get("menu_name")
-
-            c1, c2, c3, c4 = st.columns([1.6, 2.2, 1, 3.2])
-            with c1:
-                st.caption(str(created))
-            with c2:
-                if menu_name:
-                    st.write(f"{name} ({code}) / 메뉴: {menu_name}")
-                else:
-                    st.write(f"{name} ({code})")
-            with c3:
-                st.write(f"{qty}{unit}")
-            with c4:
-                st.write(f"{tx_type} - {reason}")
-
-        st.markdown("---")
+            tx_type = r.get("tx_type", "-")
+            reason = r.get("reason", "-")
+            menu_name = r.get("menu_name", "")
+            
+            # 품목명 표시 (메뉴명이 있으면 함께 표시)
+            if menu_name:
+                product_display = f"{name} ({code}) / 메뉴: {menu_name}"
+            else:
+                product_display = f"{name} ({code})"
+            
+            # 출고 사유 표시
+            reason_display = f"{tx_type} - {reason}" if tx_type and reason else (tx_type or reason or "-")
+            
+            releases_data.append({
+                "출고일시": str(created) if created else "-",
+                "품목명": product_display,
+                "수량": f"{qty}{unit}" if qty and unit else f"{qty}" if qty else "-",
+                "출고 사유": reason_display
+            })
+        
+        if releases_data:
+            df_releases = pd.DataFrame(releases_data)
+            st.dataframe(
+                df_releases,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "출고일시": st.column_config.TextColumn("출고일시", width="medium"),
+                    "품목명": st.column_config.TextColumn("품목명", width="large"),
+                    "수량": st.column_config.TextColumn("수량", width="small"),
+                    "출고 사유": st.column_config.TextColumn("출고 사유", width="medium")
+                }
+            )
+        
+        st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
         st.caption(f"총 출고 건수: {len(releases_sorted)}건")

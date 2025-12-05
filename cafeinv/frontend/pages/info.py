@@ -46,6 +46,11 @@ st.markdown("""
         max-width: 380px;    /* 버튼+아이콘 넓이 안정적 */
         gap: 28px;
     }
+    
+    /* 아이콘과 버튼 사이 여백 */
+    .icon-box {
+        margin-bottom: 20px !important;
+    }
 
     /* 컬럼 padding */
     div[data-testid="column"] {
@@ -106,6 +111,8 @@ st.write("상품, 거래처 등 기본 정보를 관리하는 화면입니다.")
 
 st.divider()
 
+st.markdown("<div style='height: 30px'></div>", unsafe_allow_html=True)
+
 # -------------------------------
 # 메인 선택 버튼들
 # -------------------------------
@@ -115,6 +122,7 @@ with col1:
     st.markdown('<div class="action-card">', unsafe_allow_html=True)
     st.markdown('<p class="action-card-text">▼ 등록이 필요한 경우 페이지로 이동</p>', unsafe_allow_html=True)
     st.markdown('<div class="icon-box"><div class="card-icon">📝</div></div>', unsafe_allow_html=True)
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
 
     if st.button("등록하기", key="register_btn", use_container_width=False, type="primary"):
         st.switch_page("pages/info_register.py")
@@ -125,6 +133,7 @@ with col2:
     st.markdown('<div class="action-card">', unsafe_allow_html=True)
     st.markdown('<p class="action-card-text">▼ 레시피 등록 페이지로 이동</p>', unsafe_allow_html=True)
     st.markdown('<div class="icon-box"><div class="card-icon">📖</div></div>', unsafe_allow_html=True)
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
 
     if st.button("레시피 등록", key="recipe_btn", use_container_width=False, type="primary"):
         st.switch_page("pages/recipe_register.py")
@@ -135,6 +144,7 @@ with col3:
     st.markdown('<div class="action-card">', unsafe_allow_html=True)
     st.markdown('<p class="action-card-text">▼ 등록한 목록 확인 가능 페이지로 이동</p>', unsafe_allow_html=True)
     st.markdown('<div class="icon-box"><div class="card-icon">📋</div></div>', unsafe_allow_html=True)
+    st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
 
     if st.button("목록보기", key="list_btn", use_container_width=False, type="primary"):
         st.switch_page("pages/info_list.py")

@@ -47,6 +47,10 @@ if "recipes" not in st.session_state:
 if "received_items" not in st.session_state:
     st.session_state.received_items = []
 
+# 현재 선택된 탭 인덱스 저장
+if "recipe_current_tab_index" not in st.session_state:
+    st.session_state.recipe_current_tab_index = 1  # 기본값: 메뉴 카테고리 목록 탭 (인덱스 1)
+
 # -------------------------------
 # 유틸: 최근 입고 단가 계산
 # -------------------------------
@@ -73,6 +77,37 @@ with button_col:
         st.switch_page("pages/info.py")
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+# 탭 상태 유지를 위한 JavaScript
+if st.session_state.get("recipe_current_tab_index") is not None:
+    tab_index = st.session_state.recipe_current_tab_index
+    st.markdown(
+        f"""
+        <script>
+        // 즉시 실행 및 DOMContentLoaded 이벤트 모두 처리
+        function selectTab() {{
+            setTimeout(function() {{
+                var tabs = document.querySelectorAll('[data-baseweb="tab"]');
+                if (tabs.length > {tab_index}) {{
+                    tabs[{tab_index}].click();
+                }}
+            }}, 100);
+        }}
+        
+        // 즉시 실행
+        selectTab();
+        
+        // DOMContentLoaded 이벤트
+        if (document.readyState === 'loading') {{
+            document.addEventListener('DOMContentLoaded', selectTab);
+        }}
+        
+        // load 이벤트
+        window.addEventListener('load', selectTab);
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
 
 # -------------------------------
 # 탭 구조
@@ -155,7 +190,7 @@ with category_register_tab:
         st.session_state.menu_cat_register_show_existing = False
     
     # 검색창, 검색 버튼, 기존 카테고리 토글을 한 줄에 배치
-    search_col1, search_col2, search_col3 = st.columns([3, 1, 1])
+    search_col1, search_col2, search_col3 = st.columns([4, 1, 1.5])
     
     with search_col1:
         search_input = st.text_input(
@@ -167,13 +202,11 @@ with category_register_tab:
         )
     
     with search_col2:
-        st.markdown("<div style='height: 37px'></div>", unsafe_allow_html=True)
         if st.button("검색", key="menu_cat_register_search_btn", use_container_width=True, type="primary"):
             st.session_state.menu_cat_register_search_term = search_input.strip() if search_input else ""
             st.rerun()
     
     with search_col3:
-        st.markdown("<div style='height: 37px'></div>", unsafe_allow_html=True)
         # checkbox는 자동으로 session_state를 업데이트하므로 직접 할당하지 않음
         st.checkbox(
             "기존 카테고리 보기",
@@ -308,241 +341,247 @@ with category_list_tab:
     if "menu_cat_selected" not in st.session_state:
         st.session_state.menu_cat_selected = set()
     
-    # 등록된 카테고리 목록 표시
-    with st.form("menu_category_list_form"):
-        if st.session_state.menu_cat_edit_mode:
-            title_col, btn_col1, btn_col2, btn_col3 = st.columns([5, 1, 1, 1])
-            with title_col:
-                st.subheader("메뉴 카테고리 목록")
-            with btn_col1:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("선택 삭제", use_container_width=True):
-                    if not st.session_state.menu_cat_selected:
-                        st.info("삭제할 항목을 선택하세요.")
-                    else:
-                        # 선택된 항목 삭제 (인덱스 기준)
-                        indices_to_delete = sorted(
-                            st.session_state.menu_cat_selected, reverse=True
-                        )
-                        for idx in indices_to_delete:
-                            if 0 <= idx < len(st.session_state.menu_categories):
-                                cat = st.session_state.menu_categories[idx]
-                                # 사용 중인 레시피 확인
-                                used_in_recipes = []
-                                for (
-                                    menu_name,
-                                    recipe_data,
-                                ) in st.session_state.recipes.items():
-                                    if recipe_data.get("category") == cat.get("name"):
-                                        used_in_recipes.append(menu_name)
-                                
-                                if used_in_recipes:
-                                    st.warning(
-                                        f"'{cat.get('name')}' 카테고리는 다음 레시피에서 사용 중입니다:\n"
-                                        + "\n".join(
-                                            [f"- {menu}" for menu in used_in_recipes]
-                                        )
-                                        + "\n\n먼저 해당 레시피의 카테고리를 변경한 후 삭제하세요."
+    # 버튼 영역 (form 밖)
+    if st.session_state.menu_cat_edit_mode:
+        title_col, btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(
+            [5, 1, 1, 1, 1]
+        )
+        with title_col:
+            st.subheader("메뉴 카테고리 목록")
+        with btn_col1:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("선택 삭제", use_container_width=True, key="menu_cat_select_delete"):
+                if not st.session_state.menu_cat_selected:
+                    st.info("삭제할 항목을 선택하세요.")
+                else:
+                    # 선택된 항목 삭제 (인덱스 기준)
+                    indices_to_delete = sorted(
+                        st.session_state.menu_cat_selected, reverse=True
+                    )
+                    for idx in indices_to_delete:
+                        if 0 <= idx < len(st.session_state.menu_categories):
+                            cat = st.session_state.menu_categories[idx]
+                            # 사용 중인 레시피 확인
+                            used_in_recipes = []
+                            for (
+                                menu_name,
+                                recipe_data,
+                            ) in st.session_state.recipes.items():
+                                if recipe_data.get("category") == cat.get("name"):
+                                    used_in_recipes.append(menu_name)
+                            
+                            if used_in_recipes:
+                                st.warning(
+                                    f"'{cat.get('name')}' 카테고리는 다음 레시피에서 사용 중입니다:\n"
+                                    + "\n".join(
+                                        [f"- {menu}" for menu in used_in_recipes]
                                     )
-                                else:
-                                    st.session_state.menu_categories.pop(idx)
-                        st.session_state.menu_cat_selected = set()
-                        st.success("선택한 항목을 삭제했습니다.")
-                        
-            with btn_col2:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("전체 삭제", use_container_width=True):
-                    # 사용 중인 카테고리 확인
-                    used_categories = set()
-                    for (
-                        menu_name,
-                        recipe_data,
-                    ) in st.session_state.recipes.items():
-                        cat_name = recipe_data.get("category")
-                        if cat_name:
-                            used_categories.add(cat_name)
-                    
-                    if used_categories:
-                        st.warning(
-                            "다음 카테고리는 레시피에서 사용 중입니다:\n"
-                            + "\n".join([f"- {cat}" for cat in used_categories])
-                            + "\n\n먼저 해당 레시피의 카테고리를 변경한 후 삭제하세요."
-                        )
+                                    + "\n\n먼저 해당 레시피의 카테고리를 변경한 후 삭제하세요."
+                                )
+                            else:
+                                st.session_state.menu_categories.pop(idx)
+                    st.session_state.menu_cat_selected = set()
+                    st.success("선택한 항목을 삭제했습니다.")
+                    st.rerun()
+
+        with btn_col2:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("전체 삭제", use_container_width=True, key="menu_cat_all_delete"):
+                # 사용 중인 카테고리 확인
+                used_categories = set()
+                for (
+                    menu_name,
+                    recipe_data,
+                ) in st.session_state.recipes.items():
+                    cat_name = recipe_data.get("category")
+                    if cat_name:
+                        used_categories.add(cat_name)
+                
+                if used_categories:
+                    st.warning(
+                        "다음 카테고리는 레시피에서 사용 중입니다:\n"
+                        + "\n".join([f"- {cat}" for cat in used_categories])
+                        + "\n\n먼저 해당 레시피의 카테고리를 변경한 후 삭제하세요."
+                    )
+                else:
+                    st.session_state.menu_categories = []
+                    st.session_state.menu_cat_selected = set()
+                    st.success("전체 항목을 삭제했습니다.")
+                    st.rerun()
+
+        with btn_col3:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("저장", use_container_width=True, key="menu_cat_save"):
+                st.session_state._menu_cat_save_clicked = True
+
+        with btn_col4:
+            st.write("")
+    else:
+        title_col, btn_col = st.columns([5, 1])
+        with title_col:
+            st.subheader("메뉴 카테고리 목록")
+        with btn_col:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("수정", use_container_width=True, key="menu_cat_edit"):
+                # 메뉴 카테고리 목록 탭 인덱스 저장 (인덱스 1) - 먼저 설정
+                st.session_state.recipe_current_tab_index = 1
+                st.session_state.menu_cat_edit_mode = True
+                st.rerun()
+
+    if len(st.session_state.menu_categories) == 0:
+        st.warning(
+            "등록된 메뉴 카테고리가 없습니다. '메뉴 카테고리 등록' 탭에서 카테고리를 등록하세요."
+        )
+    elif len(filtered_categories) == 0:
+        st.warning("검색 결과가 없습니다.")
+    else:
+        if st.session_state.menu_cat_search_term:
+            st.info(f"검색 결과: {len(filtered_categories)}개")
+        
+        if not st.session_state.menu_cat_edit_mode:
+            # 읽기 모드: 표 형식으로 표시
+            categories_data = []
+            for idx, cat in enumerate(filtered_categories, start=1):
+                categories_data.append({
+                    "번호": str(idx),
+                    "코드번호": cat.get('code', '-'),
+                    "카테고리명": cat.get('name', '-')
+                })
+            
+            df_categories = pd.DataFrame(categories_data)
+            
+            # 표 형식으로 표시
+            st.dataframe(
+                df_categories,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "번호": st.column_config.TextColumn("번호", width="small"),
+                    "코드번호": st.column_config.TextColumn("코드번호", width="medium"),
+                    "카테고리명": st.column_config.TextColumn("카테고리명", width="large")
+                }
+            )
+        else:
+            # 수정 모드: 표 형식으로 편집 가능하게
+            categories_data = []
+            
+            for idx, cat in enumerate(filtered_categories, start=1):
+                # code 기준으로 원본 인덱스 찾기
+                original_idx = next(
+                    (
+                        i
+                        for i, c in enumerate(st.session_state.menu_categories)
+                        if c.get("code") == cat.get("code")
+                    ),
+                    None,
+                )
+                if original_idx is None:
+                    continue
+                
+                # 체크박스 상태 확인
+                is_checked = original_idx in st.session_state.menu_cat_selected
+                
+                categories_data.append({
+                    "선택": is_checked,
+                    "번호": str(idx),
+                    "코드번호": cat.get("code", "-"),
+                    "카테고리명": cat.get("name", "-"),
+                    "_original_idx": original_idx  # 원본 인덱스 저장용 (표시 안 함)
+                })
+            
+            if categories_data:
+                df_categories = pd.DataFrame(categories_data)
+                
+                # 편집 가능한 표
+                edited_df = st.data_editor(
+                    df_categories,
+                    use_container_width=True,
+                    hide_index=True,
+                    key="menu_category_data_editor",
+                    column_config={
+                        "선택": st.column_config.CheckboxColumn("선택", width="small"),
+                        "번호": st.column_config.TextColumn("번호", width="small", disabled=True),
+                        "코드번호": st.column_config.TextColumn("코드번호", width="small"),
+                        "카테고리명": st.column_config.TextColumn("카테고리명", width="small"),
+                        "_original_idx": st.column_config.NumberColumn("_original_idx", width="small", disabled=True)
+                    },
+                    num_rows="dynamic"
+                )
+                
+                # 체크박스 상태 업데이트
+                for _, row in edited_df.iterrows():
+                    original_idx = int(row["_original_idx"])
+                    if row["선택"]:
+                        st.session_state.menu_cat_selected.add(original_idx)
                     else:
-                        st.session_state.menu_categories = []
-                        st.session_state.menu_cat_selected = set()
-                        st.success("전체 항목을 삭제했습니다.")
-                        
-            with btn_col3:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("저장", use_container_width=True):
-                    # 모든 항목 저장 및 중복 체크
+                        st.session_state.menu_cat_selected.discard(original_idx)
+                
+                # 저장 버튼이 클릭되었을 때 처리
+                if st.session_state.get("_menu_cat_save_clicked", False):
+                    st.session_state._menu_cat_save_clicked = False  # 플래그 리셋
+                    # 탭 인덱스 먼저 설정 (에러 발생 시에도 탭 유지)
+                    st.session_state.recipe_current_tab_index = 1
                     has_error = False
-                    for idx, cat in enumerate(st.session_state.menu_categories):
-                        new_code = (
-                            st.session_state.get(
-                                f"menu_cat_code_{idx}", cat.get("code", "")
-                            )
-                            .strip()
-                        )
-                        new_name = (
-                            st.session_state.get(
-                                f"menu_cat_name_{idx}", cat.get("name", "")
-                            )
-                            .strip()
-                        )
-                        
-                        if not new_code or not new_name:
-                            st.error("코드번호와 카테고리명을 모두 입력하세요.")
-                            has_error = True
-                            break
-                        
-                        # 중복 체크 (자기 자신 제외)
-                        if any(
-                            c["code"] == new_code and i != idx
-                            for i, c in enumerate(st.session_state.menu_categories)
-                        ):
-                            st.error(f"'{new_code}'는 이미 존재하는 코드번호입니다.")
-                            has_error = True
-                            break
-                        if any(
-                            c["name"] == new_name and i != idx
-                            for i, c in enumerate(st.session_state.menu_categories)
-                        ):
-                            st.error(f"'{new_name}'는 이미 존재하는 카테고리명입니다.")
-                            has_error = True
-                            break
+                    
+                    # st.data_editor의 최신 반환값 직접 사용 (편집된 내용 반영)
+                    for _, row in edited_df.iterrows():
+                        original_idx = int(row["_original_idx"])
+                        if 0 <= original_idx < len(st.session_state.menu_categories):
+                            new_code = str(row["코드번호"]).strip()
+                            new_name = str(row["카테고리명"]).strip()
+                            
+                            if not new_code or not new_name:
+                                st.error("코드번호와 카테고리명을 모두 입력하세요.")
+                                has_error = True
+                                break
+                            
+                            # 중복 체크 (자기 자신 제외)
+                            if any(
+                                c["code"] == new_code and i != original_idx
+                                for i, c in enumerate(st.session_state.menu_categories)
+                            ):
+                                st.error(f"'{new_code}'는 이미 존재하는 코드번호입니다.")
+                                has_error = True
+                                break
+                            if any(
+                                c["name"] == new_name and i != original_idx
+                                for i, c in enumerate(st.session_state.menu_categories)
+                            ):
+                                st.error(f"'{new_name}'는 이미 존재하는 카테고리명입니다.")
+                                has_error = True
+                                break
                     
                     if not has_error:
                         # 모든 항목 업데이트
-                        for idx, cat in enumerate(st.session_state.menu_categories):
-                            new_code = (
-                                st.session_state.get(
-                                    f"menu_cat_code_{idx}", cat.get("code", "")
-                                )
-                                .strip()
-                            )
-                            new_name = (
-                                st.session_state.get(
-                                    f"menu_cat_name_{idx}", cat.get("name", "")
-                                )
-                                .strip()
-                            )
-                            old_name = cat.get("name")
-                            
-                            st.session_state.menu_categories[idx] = {
-                                "code": new_code,
-                                "name": new_name,
-                            }
-                            
-                            # 레시피의 카테고리명도 업데이트
-                            if old_name != new_name:
-                                for (
-                                    menu_name,
-                                    recipe_data,
-                                ) in st.session_state.recipes.items():
-                                    if recipe_data.get("category") == old_name:
-                                        st.session_state.recipes[menu_name][
+                        for _, row in edited_df.iterrows():
+                            original_idx = int(row["_original_idx"])
+                            if 0 <= original_idx < len(st.session_state.menu_categories):
+                                new_code = str(row["코드번호"]).strip()
+                                new_name = str(row["카테고리명"]).strip()
+                                old_name = st.session_state.menu_categories[original_idx].get("name")
+                                
+                                st.session_state.menu_categories[original_idx] = {
+                                    "code": new_code,
+                                    "name": new_name,
+                                }
+                                
+                                # 레시피의 카테고리명도 업데이트
+                                if old_name != new_name:
+                                    for (
+                                        menu_name,
+                                        recipe_data,
+                                    ) in st.session_state.recipes.items():
+                                        if recipe_data.get("category") == old_name:
+                                            st.session_state.recipes[menu_name][
                                             "category"
                                         ] = new_name
                         
                         st.session_state.menu_cat_edit_mode = False
                         st.success("저장되었습니다.")
-                        
-        else:
-            title_col, btn_col = st.columns([5, 1])
-            with title_col:
-                st.subheader("메뉴 카테고리 목록")
-            with btn_col:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("수정", use_container_width=True):
-                    st.session_state.menu_cat_edit_mode = True
-                    
-        
-        if len(st.session_state.menu_categories) == 0:
-            st.warning(
-                "등록된 메뉴 카테고리가 없습니다. '메뉴 카테고리 등록' 탭에서 카테고리를 등록하세요."
-            )
-            st.form_submit_button("", use_container_width=True, help="")
-        elif len(filtered_categories) == 0:
-            st.warning("검색 결과가 없습니다.")
-            st.form_submit_button("", use_container_width=True, help="")
-        else:
-            if st.session_state.menu_cat_search_term:
-                st.info(f"검색 결과: {len(filtered_categories)}개")
-            
-            # 수정 모드가 아닐 때는 표 형식으로 표시
-            if not st.session_state.menu_cat_edit_mode:
-                # 카테고리 데이터를 DataFrame으로 변환
-                categories_data = []
-                for idx, cat in enumerate(filtered_categories, start=1):
-                    categories_data.append({
-                        "번호": str(idx),
-                        "코드번호": cat.get('code', '-'),
-                        "카테고리명": cat.get('name', '-')
-                    })
-                
-                df_categories = pd.DataFrame(categories_data)
-                
-                # 표 형식으로 표시
-                st.dataframe(
-                    df_categories,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "번호": st.column_config.TextColumn("번호", width="small"),
-                        "코드번호": st.column_config.TextColumn("코드번호", width="medium"),
-                        "카테고리명": st.column_config.TextColumn("카테고리명", width="large")
-                    }
-                )
-            else:
-                # 수정 모드일 때는 기존 방식 유지
-                st.markdown(
-                    """
-            <div style="max-height: 400px; overflow-y: auto;">
-                """,
-                    unsafe_allow_html=True,
-                )
-            
-            for filtered_cat in filtered_categories:
-                # 원본 인덱스 찾기
-                original_idx = next(
-                    i
-                    for i, c in enumerate(st.session_state.menu_categories)
-                    if c == filtered_cat
-                )
-                row = st.session_state.menu_categories[original_idx]
-                cat_col1, cat_col2, cat_col3 = st.columns([2, 3, 1])
-                with cat_col1:
-                    st.caption("코드번호")
-                    st.text_input(
-                        "코드번호",
-                        value=row["code"],
-                        key=f"menu_cat_code_{original_idx}",
-                        disabled=not st.session_state.menu_cat_edit_mode,
-                        label_visibility="collapsed",
-                    )
-                with cat_col2:
-                    st.caption("카테고리명")
-                    st.text_input(
-                        "카테고리명",
-                        value=row["name"],
-                        key=f"menu_cat_name_{original_idx}",
-                        disabled=not st.session_state.menu_cat_edit_mode,
-                        label_visibility="collapsed",
-                    )
-                with cat_col3:
-                    st.caption("\u00A0")
-                    st.markdown(
-                        "<div style='height: 37px'></div>", unsafe_allow_html=True
-                    )
-                    checked = st.checkbox("", key=f"menu_cat_sel_{original_idx}")
-                    if checked:
-                        st.session_state.menu_cat_selected.add(original_idx)
+                        st.rerun()
                     else:
-                        st.session_state.menu_cat_selected.discard(original_idx)
-            
-            st.markdown("</div>", unsafe_allow_html=True)
+                        # 에러 발생 시에도 탭 유지
+                        st.rerun()
 
 # -------------------------------
 # 레시피 등록/수정 탭

@@ -519,9 +519,9 @@ with product_tab:
             hide_index=True,
             column_config={
                 "번호": st.column_config.TextColumn("번호", width="small"),
-                "코드번호": st.column_config.TextColumn("코드번호", width="medium"),
-                "품목명": st.column_config.TextColumn("품목명", width="large"),
-                "카테고리": st.column_config.TextColumn("카테고리", width="medium"),
+                "코드번호": st.column_config.TextColumn("코드번호", width="small"),
+                "품목명": st.column_config.TextColumn("품목명", width="medium"),
+                "카테고리": st.column_config.TextColumn("카테고리", width="small"),
                 "단위": st.column_config.TextColumn("단위", width="small"),
                 "상태": st.column_config.TextColumn("상태", width="small"),
                 "안전재고": st.column_config.TextColumn("안전재고", width="small")

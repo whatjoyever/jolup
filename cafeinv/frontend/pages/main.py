@@ -103,22 +103,21 @@ st.markdown("""
 
 /* 버튼 스타일 */
 .stButton > button {
-    display: block;                 /* 가운데 정렬 위해 block 으로 */
-    margin: 0 auto;                 /* 좌우 중앙 정렬 */
-    width: 260px !important;        /* 버튼 가로폭 */
-    height: 160px !important;
-    font-size: 28px !important;
+    width: 100% !important;        /* 컬럼 너비에 맞춤 */
+    height: 100px !important;       /* 높이 조정 */
+    font-size: 22px !important;     /* 폰트 크기 조정 */
     font-weight: 800 !important;
-    border-radius: 22px !important;
+    border-radius: 15px !important;
     background: #f8f9fa !important;
     border: 2px solid #e0e0e0 !important;
     color: #1f1f1f !important;
-    box-shadow: 0 6px 15px rgba(0,0,0,0.15) !important;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important;
     transition: all .2s ease !important;
+    padding: 12px 20px !important;  /* padding 추가 */
 }
 .stButton > button:hover {
     background: #e9ecef !important;
-    transform: translateY(-3px) !important;
+    transform: translateY(-2px) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -314,26 +313,27 @@ if not low_stock_items and not expiring_items:
 st.markdown("<div style='height: 30px'></div>", unsafe_allow_html=True)
 
 # -----------------------------
-# 메인 버튼 (중앙 2x2)
+# 메인 버튼 (1열 가로 정렬)
 # -----------------------------
-left, center, right = st.columns([1, 8, 1])
+left, center, right = st.columns([1, 10, 1])
 
 with center:
-    # 첫 번째 줄
-    row1_col1, row1_col2 = st.columns(2, gap="large")
-    with row1_col1:
-        if st.button("⚙️ 기본정보", use_container_width=False):
+    # 4개 버튼을 1열로 가로 정렬
+    btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4, gap="medium")
+    
+    with btn_col1:
+        if st.button("⚙️ 기본정보", use_container_width=True):
             st.switch_page("pages/info.py")
-    with row1_col2:
-        if st.button("🧾 입고관리", use_container_width=False):
+    
+    with btn_col2:
+        if st.button("🧾 입고관리", use_container_width=True):
             st.switch_page("pages/receive.py")
-
-    # 두 번째 줄
-    row2_col1, row2_col2 = st.columns(2, gap="large")
-    with row2_col1:
-        if st.button("📤 출고관리", use_container_width=False):
+    
+    with btn_col3:
+        if st.button("📤 출고관리", use_container_width=True):
             st.switch_page("pages/release.py")
-    with row2_col2:
-        if st.button("📦 재고현황", use_container_width=False):
+    
+    with btn_col4:
+        if st.button("📦 재고현황", use_container_width=True):
             st.switch_page("pages/inventory.py")
 
