@@ -1,9 +1,17 @@
-import os
+import os, sys
 import streamlit as st
 from dotenv import load_dotenv
 import requests
 from datetime import date, datetime, timedelta
 import pandas as pd
+
+# --- sidebar import 경로 보정 ---
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+if FRONTEND_DIR not in sys.path:
+    sys.path.insert(0, FRONTEND_DIR)
+
+from sidebar import render_sidebar
 
 # -----------------------------
 # 환경 설정
@@ -11,7 +19,11 @@ import pandas as pd
 load_dotenv()
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
+# -----------------------------
+# 페이지 설정 & 커스텀 사이드바
+# -----------------------------
 st.set_page_config(page_title="Stock Mate", layout="wide")
+render_sidebar("main")
 
 # -----------------------------
 # 세션 상태 초기화
@@ -172,29 +184,68 @@ for item in st.session_state.received_items:
         continue
     
     try:
+        expiry_date = None
         if isinstance(expiry_str, date):
             expiry_date = expiry_str
         elif isinstance(expiry_str, str):
-            expiry_date = datetime.strptime(expiry_str[:10], "%Y-%m-%d").date()
+            expiry_str_clean = expiry_str.strip()
+            # 공백이나 시간 부분 제거 (YYYY-MM-DD HH:MM:SS -> YYYY-MM-DD)
+            if " " in expiry_str_clean:
+                expiry_str_clean = expiry_str_clean.split(" ")[0]
+            
+            if len(expiry_str_clean) >= 10:
+                date_part = expiry_str_clean[:10]
+                # YYYY-MM-DD 형식 시도
+                try:
+                    expiry_date = datetime.strptime(date_part, "%Y-%m-%d").date()
+                except ValueError:
+                    # YYYY/MM/DD 형식 시도
+                    try:
+                        expiry_date = datetime.strptime(date_part, "%Y/%m/%d").date()
+                    except ValueError:
+                        # YYYY.MM.DD 형식 시도
+                        try:
+                            expiry_date = datetime.strptime(date_part, "%Y.%m.%d").date()
+                        except ValueError:
+                            # 마지막 시도: 하이픈이나 슬래시로 변환
+                            try:
+                                normalized = date_part.replace("/", "-").replace(".", "-")
+                                expiry_date = datetime.strptime(normalized, "%Y-%m-%d").date()
+                            except ValueError:
+                                continue
+            else:
+                continue
         else:
+            continue
+        
+        if expiry_date is None:
             continue
         
         days_left = (expiry_date - today).days
         
+        # 유통기한이 임박한지 확인 (7일 이내, 아직 지나지 않은 것만)
         if 0 <= days_left <= warning_days:
             product_code = item.get("product_code", "")
             product_name = item.get("product_name", "")
             actual_qty = item.get("actual_qty", 0)
             unit = item.get("unit", "")
             
-            expiring_items.append({
-                "품목코드": product_code,
-                "품목명": product_name,
-                "유통기한": expiry_date,
-                "남은일수": days_left,
-                "수량": actual_qty,
-                "단위": unit,
-            })
+            # 이미 추가된 품목인지 확인 (중복 제거)
+            already_added = False
+            for existing in expiring_items:
+                if existing["품목코드"] == product_code and existing["유통기한"] == expiry_date:
+                    already_added = True
+                    break
+            
+            if not already_added:
+                expiring_items.append({
+                    "품목코드": product_code,
+                    "품목명": product_name,
+                    "유통기한": expiry_date,
+                    "남은일수": days_left,
+                    "수량": actual_qty,
+                    "단위": unit,
+                })
     except Exception:
         continue
 
@@ -322,17 +373,17 @@ with center:
     btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4, gap="medium")
     
     with btn_col1:
-        if st.button("⚙️ 기본정보", use_container_width=True):
+        if st.button("⚙️ 기본정보", use_container_width=True, key="main_info_btn"):
             st.switch_page("pages/info.py")
     
     with btn_col2:
-        if st.button("🧾 입고관리", use_container_width=True):
+        if st.button("🧾 입고관리", use_container_width=True, key="main_receive_btn"):
             st.switch_page("pages/receive.py")
     
     with btn_col3:
-        if st.button("📤 출고관리", use_container_width=True):
+        if st.button("📤 출고관리", use_container_width=True, key="main_release_btn"):
             st.switch_page("pages/release.py")
     
     with btn_col4:
-        if st.button("📦 재고현황", use_container_width=True):
+        if st.button("📦 재고현황", use_container_width=True, key="main_inventory_btn"):
             st.switch_page("pages/inventory.py")

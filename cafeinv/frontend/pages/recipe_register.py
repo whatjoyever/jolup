@@ -75,6 +75,73 @@ with button_col:
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 # -------------------------------
+# 탭 인덱스 초기화 및 유지
+# -------------------------------
+if "recipe_current_tab_index" not in st.session_state:
+    st.session_state.recipe_current_tab_index = 2  # 기본값: 레시피 등록 탭 (인덱스 2)
+
+# 탭 선택을 위한 JavaScript
+st.markdown("""
+<script>
+    function selectRecipeTab(index) {
+        // 여러 방법으로 탭 선택 시도
+        const tabSelectors = [
+            '[data-baseweb="tab-list"] button',
+            '[role="tablist"] button',
+            'button[data-baseweb="tab"]',
+            '.stTabs [role="tablist"] button'
+        ];
+        
+        for (const selector of tabSelectors) {
+            const tabs = document.querySelectorAll(selector);
+            if (tabs && tabs[index]) {
+                tabs[index].click();
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // 페이지 로드 시 탭 선택
+    const targetTabIndex = """ + str(st.session_state.recipe_current_tab_index) + """;
+    
+    function trySelectTab() {
+        if (!selectRecipeTab(targetTabIndex)) {
+            // 실패하면 다시 시도
+            setTimeout(trySelectTab, 50);
+        }
+    }
+    
+    // 즉시 실행
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(trySelectTab, 100);
+        });
+    } else {
+        setTimeout(trySelectTab, 100);
+    }
+    
+    // load 이벤트에서도 실행
+    window.addEventListener('load', function() {
+        setTimeout(trySelectTab, 100);
+    });
+    
+    // MutationObserver로 탭이 추가될 때도 감지
+    const observer = new MutationObserver(function(mutations) {
+        setTimeout(trySelectTab, 50);
+    });
+    
+    const targetNode = document.body;
+    if (targetNode) {
+        observer.observe(targetNode, {
+            childList: true,
+            subtree: true
+        });
+    }
+</script>
+""", unsafe_allow_html=True)
+
+# -------------------------------
 # 탭 구조
 # -------------------------------
 category_register_tab, category_list_tab, register_tab, list_tab = st.tabs(
@@ -158,6 +225,7 @@ with category_register_tab:
     search_col1, search_col2, search_col3 = st.columns([3, 1, 1])
     
     with search_col1:
+        st.caption("코드번호 또는 카테고리명으로 검색")
         search_input = st.text_input(
             "검색",
             key="menu_cat_register_search_input",
@@ -167,9 +235,10 @@ with category_register_tab:
         )
     
     with search_col2:
-        st.markdown("<div style='height: 37px'></div>", unsafe_allow_html=True)
+        st.caption("검색")
         if st.button("검색", key="menu_cat_register_search_btn", use_container_width=True, type="primary"):
             st.session_state.menu_cat_register_search_term = search_input.strip() if search_input else ""
+            st.session_state.recipe_current_tab_index = 0  # 메뉴 카테고리 등록 탭 유지
             st.rerun()
     
     with search_col3:
@@ -201,6 +270,7 @@ with category_register_tab:
     if st.session_state.menu_cat_register_search_term:
         if st.button("검색 조건 초기화", key="menu_cat_register_search_reset", use_container_width=False):
             st.session_state.menu_cat_register_search_term = ""
+            st.session_state.recipe_current_tab_index = 0  # 메뉴 카테고리 등록 탭 유지
             st.rerun()
     
     # 최근 등록한 메뉴 카테고리 표시
@@ -257,16 +327,20 @@ with category_list_tab:
     
     # 검색 섹션 (Form 형태)
     with st.form("menu_category_search_form", clear_on_submit=False):
-        st.caption("코드번호 또는 카테고리명으로 검색")
-        cat_search = st.text_input(
-            "검색",
-            key="menu_cat_search",
-                                   placeholder="코드번호 또는 카테고리명 입력",
-            label_visibility="collapsed",
-        )
-        search_submitted = st.form_submit_button(
-            "검색", use_container_width=True, type="primary"
-        )
+        search_form_col1, search_form_col2 = st.columns([3, 1])
+        with search_form_col1:
+            st.caption("코드번호 또는 카테고리명으로 검색")
+            cat_search = st.text_input(
+                "검색",
+                key="menu_cat_search",
+                placeholder="코드번호 또는 카테고리명 입력",
+                label_visibility="collapsed",
+            )
+        with search_form_col2:
+            st.caption("검색")
+            search_submitted = st.form_submit_button(
+                "검색", use_container_width=True, type="primary"
+            )
         
         # 검색어를 session_state에 저장
         if search_submitted:
@@ -274,6 +348,7 @@ with category_list_tab:
                 st.session_state.menu_cat_search_term = cat_search.strip()
             else:
                 st.session_state.menu_cat_search_term = ""
+            st.session_state.recipe_current_tab_index = 1  # 메뉴 카테고리 목록 탭 유지
     
     # 검색어 초기화 (세션 상태에 없으면)
     if "menu_cat_search_term" not in st.session_state:
@@ -300,6 +375,7 @@ with category_list_tab:
             use_container_width=False,
         ):
             st.session_state.menu_cat_search_term = ""
+            st.session_state.recipe_current_tab_index = 1  # 메뉴 카테고리 목록 탭 유지
             
     
     # 세션 상태 초기화 (수정 모드, 선택 상태)
@@ -495,59 +571,14 @@ with category_list_tab:
                         "카테고리명": st.column_config.TextColumn("카테고리명", width="large")
                     }
                 )
-            else:
-                # 수정 모드일 때는 기존 방식 유지
-                st.markdown(
-                    """
-            <div style="max-height: 400px; overflow-y: auto;">
-                """,
-                    unsafe_allow_html=True,
-                )
-            
-            for filtered_cat in filtered_categories:
-                # 원본 인덱스 찾기
-                original_idx = next(
-                    i
-                    for i, c in enumerate(st.session_state.menu_categories)
-                    if c == filtered_cat
-                )
-                row = st.session_state.menu_categories[original_idx]
-                cat_col1, cat_col2, cat_col3 = st.columns([2, 3, 1])
-                with cat_col1:
-                    st.caption("코드번호")
-                    st.text_input(
-                        "코드번호",
-                        value=row["code"],
-                        key=f"menu_cat_code_{original_idx}",
-                        disabled=not st.session_state.menu_cat_edit_mode,
-                        label_visibility="collapsed",
-                    )
-                with cat_col2:
-                    st.caption("카테고리명")
-                    st.text_input(
-                        "카테고리명",
-                        value=row["name"],
-                        key=f"menu_cat_name_{original_idx}",
-                        disabled=not st.session_state.menu_cat_edit_mode,
-                        label_visibility="collapsed",
-                    )
-                with cat_col3:
-                    st.caption("\u00A0")
-                    st.markdown(
-                        "<div style='height: 37px'></div>", unsafe_allow_html=True
-                    )
-                    checked = st.checkbox("", key=f"menu_cat_sel_{original_idx}")
-                    if checked:
-                        st.session_state.menu_cat_selected.add(original_idx)
-                    else:
-                        st.session_state.menu_cat_selected.discard(original_idx)
-            
-            st.markdown("</div>", unsafe_allow_html=True)
 
 # -------------------------------
 # 레시피 등록/수정 탭
 # -------------------------------
 with register_tab:
+    # 레시피 등록 탭 유지 (인덱스 2)
+    st.session_state.recipe_current_tab_index = 2
+    
     st.markdown("#### 레시피 등록")
     st.markdown(
         '<p style="color: #666; font-size: 12px; margin-top: -10px; margin-bottom: 16px;">💡새로운 레시피를 등록합니다. 메뉴명은 POS에서 판매되는 메뉴명과 정확히 일치해야 합니다.</p>',
@@ -642,6 +673,9 @@ with register_tab:
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
     
     # 재료 추가 기능 (form 밖)
+    # 레시피 등록 탭 유지 (인덱스 2)
+    st.session_state.recipe_current_tab_index = 2
+    
     st.markdown("#### 재료 추가")
     st.info("음료 한 잔을 만들 때 필요한 모든 재료를 추가하세요. 예: 아메리카노 = 원두 20g + 물 200ml + 컵 1개")
     
@@ -652,14 +686,21 @@ with register_tab:
         st.session_state.new_ingredient_search = ""
     
     if len(all_available_products) > 0:
+        # 재료 검색 시 탭 유지
+        def on_search_change():
+            st.session_state.recipe_current_tab_index = 2  # 레시피 등록 탭 유지
+        
         search_term_new = st.text_input(
             "🔍 재료 검색",
             value=st.session_state.new_ingredient_search,
             key="new_ingredient_search_input",
             placeholder="재료명 또는 코드번호로 검색",
-            help="재료를 빠르게 찾기 위한 검색 기능입니다."
+            help="재료를 빠르게 찾기 위한 검색 기능입니다.",
+            on_change=on_search_change
         )
         st.session_state.new_ingredient_search = search_term_new
+        # 검색어 변경 시에도 탭 인덱스 유지
+        st.session_state.recipe_current_tab_index = 2
         
         # 검색어로 필터링
         if search_term_new:
@@ -699,15 +740,20 @@ with register_tab:
         with add_ingredient_col1:
             st.markdown("**재료 선택**")
             if len(product_options_new) > 0:
+                def on_ingredient_select_change():
+                    st.session_state.recipe_current_tab_index = 2  # 레시피 등록 탭 유지
+                
                 selected_option_new = st.selectbox(
                     "재료를 선택하세요",
                     options=product_options_new,
                     key="new_ingredient_select",
                     index=0,
                     label_visibility="collapsed",
+                    on_change=on_ingredient_select_change
                 )
                 selected_idx_new = product_options_new.index(selected_option_new)
                 selected_product_new = filtered_products_new[selected_idx_new]
+                st.session_state.recipe_current_tab_index = 2  # 레시피 등록 탭 유지
             else:
                 selected_product_new = None
     
@@ -715,6 +761,10 @@ with register_tab:
             st.markdown("**소모량**")
             if "new_ingredient_qty" not in st.session_state:
                 st.session_state.new_ingredient_qty = 0.0
+            
+            def on_qty_change():
+                st.session_state.recipe_current_tab_index = 2  # 레시피 등록 탭 유지
+            
             qty_new = st.number_input(
                 "소모량을 입력하세요",
                 min_value=0.0,
@@ -722,8 +772,10 @@ with register_tab:
                 value=st.session_state.new_ingredient_qty,
                 key="new_ingredient_qty_input",
                 label_visibility="collapsed",
+                on_change=on_qty_change
             )
             st.session_state.new_ingredient_qty = qty_new
+            st.session_state.recipe_current_tab_index = 2  # 레시피 등록 탭 유지
     
         with add_ingredient_col3:
             st.markdown("**단위**")
@@ -738,6 +790,9 @@ with register_tab:
                     product_unit_new if product_unit_new in unit_options else "g"
                 )
             
+            def on_unit_change():
+                st.session_state.recipe_current_tab_index = 2  # 레시피 등록 탭 유지
+            
             unit_new = st.selectbox(
                 "단위를 선택하세요",
                 options=unit_options,
@@ -746,8 +801,10 @@ with register_tab:
                 else 0,
                 key="new_ingredient_unit_select",
                 label_visibility="collapsed",
+                on_change=on_unit_change
             )
             st.session_state.new_ingredient_unit = unit_new
+            st.session_state.recipe_current_tab_index = 2  # 레시피 등록 탭 유지
             if selected_product_new and product_unit_new:
                 st.caption(f"기본 단위: {product_unit_new}")
     
@@ -773,6 +830,8 @@ with register_tab:
                     st.session_state.new_ingredient_unit = (
                         product_unit_new if product_unit_new in unit_options else "g"
                     )
+                    # 레시피 등록 탭 유지 (인덱스 2)
+                    st.session_state.recipe_current_tab_index = 2
                     st.rerun()
                 else:
                     st.warning("재료를 선택하고 소모량을 입력하세요.")
@@ -1002,6 +1061,10 @@ with list_tab:
         search_submitted = st.form_submit_button(
             "검색", use_container_width=True, type="primary"
         )
+        
+        # 검색 버튼 클릭 시 탭 유지
+        if search_submitted:
+            st.session_state.recipe_current_tab_index = 3  # 레시피 목록 조회 탭 유지
     
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     

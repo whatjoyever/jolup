@@ -382,7 +382,11 @@ with category_tab:
                     st.session_state.last_registered_category = new_category
                     st.session_state.category_success = True
 
-                    st.session_state["cat_code_input"] = ""
+                    # 다음 렌더링 시 새로운 코드가 자동 생성되도록 세션 상태 초기화
+                    if "cat_code_input" in st.session_state:
+                        del st.session_state["cat_code_input"]
+                    if "cat_name_input" in st.session_state:
+                        del st.session_state["cat_name_input"]
                     st.session_state.info_register_tab = 0
                     st.markdown("""
                     <script>
@@ -545,7 +549,11 @@ with product_tab:
                     st.session_state.last_registered_product = new_product
                     st.session_state.product_success = True
 
-                    st.session_state["prod_code_input"] = ""
+                    # 다음 렌더링 시 새로운 코드가 자동 생성되도록 세션 상태 초기화
+                    if "prod_code_input" in st.session_state:
+                        del st.session_state["prod_code_input"]
+                    if "prod_name_input" in st.session_state:
+                        del st.session_state["prod_name_input"]
                     st.session_state.info_register_tab = 1
                     st.markdown("""
                     <script>
@@ -687,7 +695,11 @@ with partner_tab:
                     st.session_state.last_registered_partner = new_partner
                     st.session_state.partner_success = True
 
-                    st.session_state["p_code_input"] = ""
+                    # 다음 렌더링 시 새로운 코드가 자동 생성되도록 세션 상태 초기화
+                    if "p_code_input" in st.session_state:
+                        del st.session_state["p_code_input"]
+                    if "p_name_input" in st.session_state:
+                        del st.session_state["p_name_input"]
                     st.session_state.info_register_tab = 2
                     st.markdown("""
                     <script>
@@ -849,7 +861,11 @@ with admin_tab:
                     st.session_state.last_registered_admin = new_admin
                     st.session_state.admin_success = True
 
-                    st.session_state["admin_emp_no"] = ""
+                    # 다음 렌더링 시 새로운 코드가 자동 생성되도록 세션 상태 초기화
+                    if "admin_emp_no" in st.session_state:
+                        del st.session_state["admin_emp_no"]
+                    if "admin_name" in st.session_state:
+                        del st.session_state["admin_name"]
                     st.session_state.info_register_tab = 3
                     st.markdown("""
                     <script>

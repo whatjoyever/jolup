@@ -167,16 +167,23 @@ def get_latest_partner_name(product_code: str) -> str:
             continue
 
         # 입고 내역에 저장된 값들
-        latest_partner_code = (
-            r.get("partner_code")
-            or r.get("partner")
-            or r.get("partner_id")
-        )
-        latest_partner_name_raw = (
-            r.get("partner_name")
-            or r.get("partner_kor")
-            or r.get("partner")
-        )
+        # partner_code 추출 (딕셔너리인 경우 처리)
+        partner_code_candidate = r.get("partner_code") or r.get("partner_id")
+        partner_candidate = r.get("partner")
+        
+        # partner가 딕셔너리인 경우 code 필드 추출
+        if isinstance(partner_candidate, dict):
+            latest_partner_code = partner_candidate.get("code") or partner_code_candidate
+        else:
+            latest_partner_code = partner_code_candidate or (partner_candidate if isinstance(partner_candidate, str) else None)
+        
+        # partner_name 추출 (딕셔너리인 경우 처리)
+        partner_name_candidate = r.get("partner_name") or r.get("partner_kor")
+        if isinstance(partner_candidate, dict):
+            latest_partner_name_raw = partner_candidate.get("name") or partner_name_candidate
+        else:
+            latest_partner_name_raw = partner_name_candidate or (partner_candidate if isinstance(partner_candidate, str) else None)
+        
         break
 
     # 1단계: partner_code로 partners 테이블에서 한글 이름 찾기
@@ -184,16 +191,26 @@ def get_latest_partner_name(product_code: str) -> str:
         for p in partners:
             if p.get("code") == latest_partner_code:
                 # 거래처 기본정보의 name 필드를 한글 이름으로 사용
-                if p.get("name"):
-                    return p["name"]
+                name_value = p.get("name")
+                if name_value:
+                    # 딕셔너리인 경우 문자열로 변환
+                    if isinstance(name_value, dict):
+                        return str(name_value)
+                    return str(name_value)
 
     # 2단계: 입고 내역 안에 이미 이름 비슷한 값이 있으면 사용
     if latest_partner_name_raw:
-        return latest_partner_name_raw
+        # 딕셔너리인 경우 문자열로 변환
+        if isinstance(latest_partner_name_raw, dict):
+            return str(latest_partner_name_raw)
+        return str(latest_partner_name_raw)
 
     # 3단계: 그래도 없으면 코드라도 반환
     if latest_partner_code:
-        return latest_partner_code
+        # 딕셔너리인 경우 문자열로 변환
+        if isinstance(latest_partner_code, dict):
+            return str(latest_partner_code.get("code", ""))
+        return str(latest_partner_code)
 
     return ""
 
@@ -317,19 +334,34 @@ for code in all_codes:
     # 필터링: 검색 키워드
     if keyword and keyword.strip():
         kw = keyword.strip().lower()
+        # partner_name이 딕셔너리인 경우 문자열로 변환
+        partner_search_str = ""
+        if partner_name:
+            if isinstance(partner_name, dict):
+                partner_search_str = partner_name.get("name", "") or str(partner_name)
+            else:
+                partner_search_str = str(partner_name)
+        
         joined = " ".join(
             [
-                code,
-                name,
-                category,
-                product_unit,
-                partner_name or "",
-                status or "",
+                str(code) if code else "",
+                str(name) if name else "",
+                str(category) if category else "",
+                str(product_unit) if product_unit else "",
+                partner_search_str,
+                str(status) if status else "",
             ]
         ).lower()
         if kw not in joined:
             continue
 
+    # partner_name이 딕셔너리인 경우 문자열로 변환
+    partner_display = partner_name
+    if isinstance(partner_name, dict):
+        partner_display = partner_name.get("name", "") or str(partner_name)
+    elif not isinstance(partner_name, str):
+        partner_display = str(partner_name) if partner_name else ""
+    
     summary_rows.append(
         {
             "code": code,
@@ -340,7 +372,7 @@ for code in all_codes:
             "safety": safety,
             "status": status,
             "expiry": expiry,
-            "partner": partner_name,
+            "partner": partner_display,
             "remark": remark,
         }
     )
