@@ -87,6 +87,10 @@ if "order_register_common_delivery_date" not in st.session_state:
     st.session_state.order_register_common_delivery_date = date.today() + timedelta(days=7)
 if "order_register_common_note" not in st.session_state:
     st.session_state.order_register_common_note = ""
+if "recommended_items_added" not in st.session_state:
+    st.session_state.recommended_items_added = set()  # 발주 추가된 추천 품목 코드 저장
+if "order_register_auto_select_product" not in st.session_state:
+    st.session_state.order_register_auto_select_product = None  # 자동 선택할 품목 코드
 
 # -------------------------------
 # 헤더 & 뒤로가기 버튼
@@ -100,6 +104,294 @@ with button_col:
         st.switch_page("pages/receive.py")
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+# -------------------------------
+# 재고 계산 함수 (inventory.py와 동일한 로직)
+# -------------------------------
+UNIT_CONVERT = {
+    ("kg", "g"): 1000.0,
+    ("g", "kg"): 0.001,
+    ("L", "ml"): 1000.0,
+    ("ml", "L"): 0.001,
+}
+
+def convert_qty(qty: float, from_unit: str | None, to_unit: str | None) -> float:
+    """단위 변환 (kg↔g, L↔ml). 정의되지 않은 조합은 값 그대로."""
+    if qty is None:
+        return 0.0
+    if not from_unit or not to_unit or from_unit == to_unit:
+        return float(qty)
+    factor = UNIT_CONVERT.get((from_unit, to_unit))
+    if factor is None:
+        return float(qty)
+    return float(qty) * factor
+
+def get_product_base_unit(product_code: str) -> str:
+    """품목별 기준 단위 결정."""
+    for p in st.session_state.products:
+        if p.get("code") == product_code:
+            u = (p.get("unit") or "").strip()
+            if u in ("kg", "g"):
+                return "g"
+            if u in ("L", "ml"):
+                return "ml"
+            return u or "g"
+    return "g"
+
+def get_stock_by_code(product_code: str) -> tuple[float, str]:
+    """해당 품목의 현재 재고를 (수량, 기준단위) 형태로 반환."""
+    base_unit = get_product_base_unit(product_code)
+    
+    total_in = 0.0
+    for r in st.session_state.get("received_items", []):
+        if r.get("product_code") != product_code:
+            continue
+        qty = float(r.get("actual_qty", 0) or 0)
+        from_unit = (r.get("unit") or base_unit).strip()
+        total_in += convert_qty(qty, from_unit, base_unit)
+    
+    total_out = 0.0
+    for o in st.session_state.get("releases", []):
+        if o.get("product_code") != product_code:
+            continue
+        qty = float(o.get("qty", 0) or 0)
+        from_unit = (o.get("unit") or base_unit).strip()
+        total_out += convert_qty(qty, from_unit, base_unit)
+    
+    return total_in - total_out, base_unit
+
+# -------------------------------
+# 발주 추천 품목 섹션
+# -------------------------------
+if "received_items" not in st.session_state:
+    st.session_state.received_items = []
+if "releases" not in st.session_state:
+    st.session_state.releases = []
+
+# 안전재고 미달 품목 찾기
+low_stock_items = []
+for product in st.session_state.products:
+    if product.get("status") != "사용":  # 사용 중인 품목만
+        continue
+    
+    product_code = product.get("code", "")
+    if not product_code:
+        continue
+    
+    safety_stock = float(product.get("safety", 0) or 0)
+    if safety_stock <= 0:
+        continue
+    
+    current_stock, base_unit = get_stock_by_code(product_code)
+    display_unit = (product.get("unit") or "").strip() or base_unit
+    stock_display = convert_qty(current_stock, base_unit, display_unit)
+    
+    if stock_display < safety_stock:
+        low_stock_items.append({
+            "product": product,
+            "current_stock": stock_display,
+            "safety_stock": safety_stock,
+            "unit": display_unit,
+            "reason": "안전재고 미달"
+        })
+
+# 유통기한 임박 품목 찾기 (7일 이내)
+expiring_items = []
+today = date.today()
+expiry_threshold = today + timedelta(days=7)
+
+for received_item in st.session_state.get("received_items", []):
+    expiry_str = received_item.get("expiry", "")
+    if not expiry_str:
+        continue
+    
+    try:
+        # 날짜 파싱
+        if isinstance(expiry_str, date):
+            expiry_date = expiry_str
+        elif isinstance(expiry_str, str):
+            expiry_str_clean = expiry_str.strip()
+            if " " in expiry_str_clean:
+                expiry_str_clean = expiry_str_clean.split(" ")[0]
+            
+            if len(expiry_str_clean) >= 10:
+                date_part = expiry_str_clean[:10]
+                try:
+                    expiry_date = datetime.strptime(date_part, "%Y-%m-%d").date()
+                except ValueError:
+                    try:
+                        expiry_date = datetime.strptime(date_part, "%Y/%m/%d").date()
+                    except ValueError:
+                        try:
+                            expiry_date = datetime.strptime(date_part, "%Y.%m.%d").date()
+                        except ValueError:
+                            continue
+            else:
+                continue
+        else:
+            continue
+        
+        # 유통기한이 임박한지 확인 (7일 이내)
+        if today <= expiry_date <= expiry_threshold:
+            product_code = received_item.get("product_code", "")
+            # 해당 품목 정보 찾기
+            product_info = None
+            for p in st.session_state.products:
+                if p.get("code") == product_code:
+                    product_info = p
+                    break
+            
+            if product_info and product_info.get("status") == "사용":
+                # 이미 추가된 품목인지 확인
+                already_added = False
+                for item in expiring_items:
+                    if item["product"].get("code") == product_code:
+                        already_added = True
+                        break
+                
+                if not already_added:
+                    days_left = (expiry_date - today).days
+                    expiring_items.append({
+                        "product": product_info,
+                        "expiry_date": expiry_date,
+                        "days_left": days_left,
+                        "reason": f"유통기한 임박 ({days_left}일 남음)"
+                    })
+    except Exception:
+        continue
+
+# 발주 추천 품목이 있으면 표시
+recommended_items = low_stock_items + expiring_items
+
+# 이미 발주 추가된 품목은 제외
+recommended_items = [
+    item for item in recommended_items 
+    if item["product"].get("code", "") not in st.session_state.get("recommended_items_added", set())
+]
+
+# 각 추천 품목에 대해 이전 거래 내역에서 거래처 및 단가 정보 찾기
+def get_previous_transaction(product_code: str):
+    """해당 품목의 이전 거래 내역에서 거래처 및 단가 정보 찾기"""
+    # receives에서 해당 품목의 최근 거래 내역 찾기 (최신순으로)
+    for receive in reversed(st.session_state.get("receives", [])):
+        if receive.get("product_code") == product_code:
+            partner = receive.get("partner")
+            partner_name = None
+            price = receive.get("price", 0)
+            
+            if partner:
+                if isinstance(partner, dict):
+                    partner_name = partner.get("name", "")
+                elif isinstance(partner, str):
+                    partner_name = partner
+            
+            # partner_name이 직접 저장된 경우
+            if not partner_name:
+                partner_name = receive.get("partner_name")
+            
+            if partner_name or price:
+                return {
+                    "partner_name": partner_name,
+                    "price": price
+                }
+    
+    return None
+
+if recommended_items:
+    st.markdown("### 📋 발주 추천 품목")
+    # 연한 빨간색 배경의 안내 문구
+    st.markdown("""
+    <div style='background-color: #ffcccc; color: #8b0000; padding: 12px; border-radius: 5px; margin-bottom: 16px; border: 1px solid #ff9999;'>
+        <strong>💡 안전재고 미달 또는 유통기한이 임박한 품목입니다. 발주를 권장합니다.</strong>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 추천 품목 목록 표시
+    for idx, item in enumerate(recommended_items):
+        product = item["product"]
+        reason = item["reason"]
+        product_code = product.get("code", "")
+        
+        # 이전 거래 내역에서 거래처 및 단가 찾기
+        previous_transaction = get_previous_transaction(product_code)
+        previous_partner = previous_transaction.get("partner_name") if previous_transaction else None
+        previous_price = previous_transaction.get("price", 0) if previous_transaction else None
+        
+        with st.expander(f"⚠️ {product.get('name', '')} ({product.get('code', '')}) - {reason}", expanded=False):
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                st.write(f"**품목명:** {product.get('name', '')}")
+                st.write(f"**코드:** {product.get('code', '')}")
+                st.write(f"**카테고리:** {product.get('category', '-')}")
+                if "current_stock" in item:
+                    st.write(f"**현재 재고:** {item['current_stock']:.2f} {item['unit']}")
+                    st.write(f"**안전재고:** {item['safety_stock']:.2f} {item['unit']}")
+                if "expiry_date" in item:
+                    st.write(f"**유통기한:** {item['expiry_date']}")
+                    st.write(f"**남은 일수:** {item['days_left']}일")
+            with col2:
+                st.write(f"**단위:** {product.get('unit', '-')}")
+                if previous_partner:
+                    st.write(f"**이전 거래처:** {previous_partner}")
+                else:
+                    st.write(f"**이전 거래처:** -")
+                if previous_price and previous_price > 0:
+                    st.write(f"**이전 단가:** {previous_price:,}원")
+                else:
+                    st.write(f"**이전 단가:** -")
+            with col3:
+                if st.button("➕ 발주 추가", key=f"add_recommended_{product.get('code', '')}_{idx}", use_container_width=True):
+                    # 거래처가 선택되어 있으면 바로 추가
+                    if st.session_state.order_register_selected_partner:
+                        product_code = product.get("code", "")
+                        # 이전 거래 단가가 있으면 우선 사용, 없으면 기본 단가 사용
+                        default_price = previous_price if (previous_price and previous_price > 0) else product.get("price", 0)
+                        
+                        # 같은 품목이 이미 있는지 확인
+                        existing_idx = None
+                        for i, temp_item in enumerate(st.session_state.order_register_temp_items):
+                            if temp_item["product_code"] == product_code:
+                                existing_idx = i
+                                break
+                        
+                        if existing_idx is not None:
+                            # 같은 품목이 있으면 수량만 증가 (안전재고 미달인 경우)
+                            if "current_stock" in item:
+                                recommended_qty = max(1, int(item["safety_stock"] - item["current_stock"]) + 1)
+                                st.session_state.order_register_temp_items[existing_idx]["quantity"] += recommended_qty
+                                st.success(f"✅ {product.get('name', '')} 수량이 {recommended_qty}개 증가했습니다.")
+                            else:
+                                st.info("이미 발주 목록에 추가된 품목입니다.")
+                        else:
+                            # 새로운 품목 추가
+                            partner_name = st.session_state.order_register_selected_partner.get("name", "")
+                            recommended_qty = 1
+                            if "current_stock" in item:
+                                # 안전재고 미달인 경우, 안전재고 수준까지 채우는 수량 추천
+                                recommended_qty = max(1, int(item["safety_stock"] - item["current_stock"]) + 1)
+                            
+                            new_item = {
+                                "product_code": product_code,
+                                "product_name": product.get("name", ""),
+                                "category": product.get("category", ""),
+                                "unit": product.get("unit", ""),
+                                "quantity": recommended_qty,
+                                "price": default_price,
+                                "partner_name": partner_name,
+                            }
+                            st.session_state.order_register_temp_items.append(new_item)
+                            st.success(f"✅ {new_item['product_name']} ({new_item['product_code']}) {recommended_qty}개가 발주 목록에 추가되었습니다.")
+                        
+                        # 추천 품목 목록에서 제거하기 위해 추가된 품목 코드 저장
+                        st.session_state.recommended_items_added.add(product_code)
+                        # 발주 등록 폼에서 자동 선택할 품목 설정
+                        st.session_state.order_register_auto_select_product = product_code
+                        
+                        st.rerun()
+                    else:
+                        st.warning("거래처를 먼저 선택해주세요.")
+    
+    st.markdown("---")
 
 # -------------------------------
 # 발주 등록 폼
@@ -253,9 +545,20 @@ with st.form("order_register_form", clear_on_submit=False):
         else:
             product_options = [f"{p['name']} ({p['code']})" for p in filtered_products]
             
-            # 기본 선택값 설정 (이전에 선택한 품목이 검색 결과에 있으면 유지)
+            # 기본 선택값 설정
             default_index = 0
-            if st.session_state.get("receive_selected_product"):
+            
+            # 자동 선택할 품목이 있으면 우선 적용
+            if st.session_state.get("order_register_auto_select_product"):
+                auto_select_code = st.session_state.order_register_auto_select_product
+                for idx, p in enumerate(filtered_products):
+                    if p.get("code", "") == auto_select_code:
+                        default_index = idx
+                        # 자동 선택 후 초기화
+                        st.session_state.order_register_auto_select_product = None
+                        break
+            # 자동 선택 품목이 없으면 이전에 선택한 품목이 검색 결과에 있으면 유지
+            elif st.session_state.get("receive_selected_product"):
                 prev_selected = st.session_state.receive_selected_product
                 prev_option = f"{prev_selected.get('name', '')} ({prev_selected.get('code', '')})"
                 if prev_option in product_options:

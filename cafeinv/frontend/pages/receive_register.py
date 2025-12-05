@@ -1,6 +1,6 @@
 import os, sys
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, date
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
