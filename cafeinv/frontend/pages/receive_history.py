@@ -653,6 +653,11 @@ else:
 
         df_receive = pd.DataFrame(table_rows)
 
+        # ✅ 발주일이 비어 있으면 입고일로 자동 채우기
+        if not df_receive.empty and "발주일" in df_receive.columns and "입고일" in df_receive.columns:
+            df_receive["발주일"] = df_receive["발주일"].replace(["", "-", None], pd.NA)
+            df_receive["발주일"] = df_receive["발주일"].fillna(df_receive["입고일"])
+
         st.markdown("### 📊 입고 내역 (표 보기)")
         st.dataframe(
             df_receive,
@@ -710,88 +715,11 @@ for item in st.session_state.received_items:
         else:
             order_date_str = ""
         
-        # receive_date 정규화 (항상 YYYY-MM-DD 형식 문자열로 변환)
-        receive_date_raw = item.get("receive_date", "")
-        receive_date_normalized = ""
-        if receive_date_raw:
-            try:
-                if isinstance(receive_date_raw, date):
-                    receive_date_normalized = receive_date_raw.strftime("%Y-%m-%d")
-                elif isinstance(receive_date_raw, str):
-                    receive_date_str_clean = receive_date_raw.strip()
-                    # 공백이나 시간 부분 제거 (YYYY-MM-DD HH:MM:SS -> YYYY-MM-DD)
-                    if " " in receive_date_str_clean:
-                        receive_date_str_clean = receive_date_str_clean.split(" ")[0]
-                    
-                    if len(receive_date_str_clean) >= 10:
-                        date_part = receive_date_str_clean[:10]
-                        # YYYY-MM-DD 형식인지 확인
-                        try:
-                            # 파싱해서 형식 검증
-                            parsed_date = datetime.strptime(date_part, "%Y-%m-%d").date()
-                            receive_date_normalized = parsed_date.strftime("%Y-%m-%d")
-                        except ValueError:
-                            # 다른 형식 시도
-                            try:
-                                # YYYY/MM/DD 형식
-                                if "/" in date_part:
-                                    parsed_date = datetime.strptime(date_part, "%Y/%m/%d").date()
-                                    receive_date_normalized = parsed_date.strftime("%Y-%m-%d")
-                                # YYYY.MM.DD 형식
-                                elif "." in date_part:
-                                    parsed_date = datetime.strptime(date_part, "%Y.%m.%d").date()
-                                    receive_date_normalized = parsed_date.strftime("%Y-%m-%d")
-                                else:
-                                    # 마지막 시도: 모든 구분자를 하이픈으로 변환
-                                    normalized = date_part.replace("/", "-").replace(".", "-")
-                                    parsed_date = datetime.strptime(normalized, "%Y-%m-%d").date()
-                                    receive_date_normalized = parsed_date.strftime("%Y-%m-%d")
-                            except ValueError:
-                                # 파싱 실패 시 원본 유지 (하지만 이 경우는 필터링에서 제외될 수 있음)
-                                receive_date_normalized = date_part
-                    else:
-                        # 길이가 10 미만이면 파싱 시도
-                        try:
-                            parsed_date = datetime.strptime(receive_date_str_clean, "%Y-%m-%d").date()
-                            receive_date_normalized = parsed_date.strftime("%Y-%m-%d")
-                        except ValueError:
-                            receive_date_normalized = receive_date_str_clean
-                else:
-                    # 다른 타입이면 문자열로 변환 후 파싱 시도
-                    receive_date_str = str(receive_date_raw).strip()
-                    if " " in receive_date_str:
-                        receive_date_str = receive_date_str.split(" ")[0]
-                    if len(receive_date_str) >= 10:
-                        try:
-                            parsed_date = datetime.strptime(receive_date_str[:10], "%Y-%m-%d").date()
-                            receive_date_normalized = parsed_date.strftime("%Y-%m-%d")
-                        except ValueError:
-                            receive_date_normalized = receive_date_str[:10]
-                    else:
-                        receive_date_normalized = receive_date_str
-            except Exception:
-                # 모든 파싱 실패 시 원본 문자열 유지
-                receive_date_normalized = str(receive_date_raw).strip()
-                if " " in receive_date_normalized:
-                    receive_date_normalized = receive_date_normalized.split(" ")[0]
-        
-        # receive_date가 없거나 빈 문자열이면 해당 항목 제외
-        if not receive_date_normalized or receive_date_normalized.strip() == "":
-            continue
-        
-        # 최종 검증: YYYY-MM-DD 형식인지 확인
-        if len(receive_date_normalized) >= 10:
-            try:
-                datetime.strptime(receive_date_normalized[:10], "%Y-%m-%d")
-            except ValueError:
-                # 형식이 맞지 않으면 제외
-                continue
-        
         all_transactions.append(
             {
                 **item,
                 "transaction_type": "매입(입고)",
-                "transaction_date": receive_date_normalized,
+                "transaction_date": item.get("receive_date", ""),
                 "order_date": order_date_str,  # 발주일 추가
                 "qty": item.get("actual_qty", 0),
                 "price": item.get("actual_price", 0),
@@ -1070,9 +998,9 @@ else:
             # 2단계: 날짜 필터링 (기간 설정이 있으면 반드시 확인)
             if start_date and end_date:
                 trans_date_str = t.get("transaction_date")
-                if not trans_date_str or (isinstance(trans_date_str, str) and trans_date_str.strip() == ""):
+                if not trans_date_str:
                     continue
-                    
+                     
                 try:
                     # 날짜 문자열을 date 객체로 변환
                     trans_date = None
@@ -1080,57 +1008,20 @@ else:
                         trans_date = trans_date_str
                     elif isinstance(trans_date_str, str):
                         trans_date_str_clean = trans_date_str.strip()
-                        # 다양한 날짜 형식 처리
                         if len(trans_date_str_clean) >= 10:
                             date_part = trans_date_str_clean[:10]
-                            # YYYY-MM-DD 형식 시도
-                            try:
-                                trans_date = datetime.strptime(date_part, "%Y-%m-%d").date()
-                            except ValueError:
-                                # YYYY/MM/DD 형식 시도
-                                try:
-                                    trans_date = datetime.strptime(date_part, "%Y/%m/%d").date()
-                                except ValueError:
-                                    # YYYY.MM.DD 형식 시도
-                                    try:
-                                        trans_date = datetime.strptime(date_part, "%Y.%m.%d").date()
-                                    except ValueError:
-                                        # 마지막 시도: 하이픈이나 슬래시로 변환
-                                        try:
-                                            normalized = date_part.replace("/", "-").replace(".", "-")
-                                            trans_date = datetime.strptime(normalized, "%Y-%m-%d").date()
-                                        except ValueError:
-                                            continue
+                            trans_date = datetime.strptime(date_part, "%Y-%m-%d").date()
                         else:
                             continue
                     else:
                         continue
-                    
+                     
                     # 날짜 범위 확인 (시작일 <= 거래일 <= 종료일)
                     if not trans_date:
                         continue
-                    # 날짜 비교 (start_date와 end_date가 date 객체인지 확인)
-                    if isinstance(start_date, date) and isinstance(end_date, date):
-                        if not (start_date <= trans_date <= end_date):
-                            continue
-                    else:
-                        # start_date나 end_date가 문자열이면 date 객체로 변환
-                        try:
-                            if isinstance(start_date, str):
-                                start_date_obj = datetime.strptime(start_date[:10], "%Y-%m-%d").date()
-                            else:
-                                start_date_obj = start_date
-                            if isinstance(end_date, str):
-                                end_date_obj = datetime.strptime(end_date[:10], "%Y-%m-%d").date()
-                            else:
-                                end_date_obj = end_date
-                            if not (start_date_obj <= trans_date <= end_date_obj):
-                                continue
-                        except:
-                            continue
+                    if not (start_date <= trans_date <= end_date):
+                        continue
                 except Exception as e:
-                    # 디버깅을 위해 예외 정보 출력 (선택적)
-                    # st.write(f"날짜 파싱 오류: {trans_date_str}, 오류: {e}")
                     continue
             
             # 3단계: 거래처 필터링 (거래처가 선택되었으면 반드시 확인)
@@ -1138,21 +1029,21 @@ else:
                 partner_raw = t.get("partner")
                 if not partner_raw:
                     continue
-                    
+                     
                 partner = ensure_partner_dict(partner_raw)
                 if not partner:
                     continue
-                    
+                     
                 partner_code = get_partner_code(partner)
                 partner_name = get_partner_name(partner)
-                
+                 
                 # 거래처 코드 또는 이름으로 매칭
                 code_match = False
                 name_match = False
-                
+                 
                 if selected_partner_codes and partner_code:
                     code_match = partner_code in selected_partner_codes
-                
+                 
                 if partner_name_only and partner_name:
                     # 공백 제거 후 비교
                     search_name_clean = partner_name_only.replace(" ", "").replace("　", "").strip()
@@ -1162,7 +1053,7 @@ else:
                                  partner_name_clean == search_name_clean or
                                  partner_name_clean.startswith(search_name_clean) or
                                  search_name_clean.startswith(partner_name_clean))
-                
+                 
                 if not (code_match or name_match):
                     continue
 

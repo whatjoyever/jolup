@@ -336,4 +336,3 @@ with center:
     with btn_col4:
         if st.button("📦 재고현황", use_container_width=True):
             st.switch_page("pages/inventory.py")
-

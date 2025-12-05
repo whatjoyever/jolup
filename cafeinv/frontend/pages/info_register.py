@@ -3,6 +3,34 @@ import streamlit as st
 import re
 import pandas as pd
 
+# -------------------------------
+# 공통: 코드 자동채번 유틸 함수
+# -------------------------------
+def generate_next_code(prefix: str, existing_codes, digits: int = 3) -> str:
+    """
+    prefix 로 시작하고 뒤에 숫자가 붙는 코드들 중 최댓값 + 1 을 만들어 준다.
+    예: prefix='pr_', existing=['pr_001', 'pr_010'] -> 'pr_011'
+    """
+    max_num = 0
+    pattern = re.compile(rf'^{re.escape(prefix)}(\d+)$')
+
+    for code in existing_codes:
+        if not code:
+            continue
+        code = str(code)
+        m = pattern.match(code)
+        if m:
+            try:
+                num = int(m.group(1))
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                continue
+
+    next_num = max_num + 1
+    return f"{prefix}{str(next_num).zfill(digits)}"
+
+
 # --- sidebar import 경로 보정 ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
@@ -18,7 +46,7 @@ from client import api_get, api_post
 st.set_page_config(page_title="신규 등록", page_icon="⚙️", layout="wide")
 render_sidebar("info")
 
-# 기본 여백/스타일
+# 기본 여백/스타일 + 탭 유지 JS
 st.markdown("""
 <style>
     .main .block-container {
@@ -71,16 +99,13 @@ st.markdown("""
     function activateTab(tabIndex) {
         const tabs = findTabs();
         if (tabs && tabs.length > tabIndex && tabs[tabIndex]) {
-            // 탭이 실제로 클릭 가능한지 확인
             const tab = tabs[tabIndex];
-            if (tab.offsetParent !== null) { // 탭이 화면에 보이는지 확인
+            if (tab.offsetParent !== null) {
                 tab.click();
-                // 클릭 후 잠시 기다렸다가 다시 확인하여 확실히 활성화
                 setTimeout(function() {
                     const currentTabs = findTabs();
                     if (currentTabs && currentTabs.length > tabIndex) {
                         const currentTab = currentTabs[tabIndex];
-                        // 탭이 활성화되지 않았으면 다시 클릭
                         if (currentTab.getAttribute('aria-selected') !== 'true' && 
                             !currentTab.classList.contains('st-ah') &&
                             !currentTab.classList.contains('active')) {
@@ -98,13 +123,12 @@ st.markdown("""
         const tabButtons = findTabs();
         if (tabButtons && tabButtons.length > 0) {
             tabButtons.forEach(function(btn, index) {
-                // 기존 리스너가 있는지 확인하고 추가
                 if (!btn.hasAttribute('data-tab-listener')) {
                     btn.setAttribute('data-tab-listener', 'true');
                     btn.addEventListener('click', function() {
                         sessionStorage.setItem('info_register_tab', index.toString());
-                        sessionStorage.removeItem('info_register_tab_force'); // 플래그 제거
-                    }, true); // capture phase에서 실행
+                        sessionStorage.removeItem('info_register_tab_force');
+                    }, true);
                 }
             });
         }
@@ -117,17 +141,14 @@ st.markdown("""
         if (savedTab !== null) {
             const tabIndex = parseInt(savedTab);
             
-            // force 플래그가 있으면 더 공격적으로 활성화 시도
             if (forceFlag === '1') {
-                // 여러 번 시도 (더 긴 시간)
                 let attempts = 0;
-                const maxAttempts = 50; // 더 많은 시도
+                const maxAttempts = 50;
                 const tryActivate = setInterval(function() {
                     attempts++;
                     const tabs = findTabs();
                     if (tabs && tabs.length > tabIndex) {
                         if (activateTab(tabIndex)) {
-                            // 탭이 활성화되었는지 확인
                             const currentTabs = findTabs();
                             if (currentTabs && currentTabs.length > tabIndex) {
                                 const currentTab = currentTabs[tabIndex];
@@ -144,9 +165,8 @@ st.markdown("""
                         clearInterval(tryActivate);
                         sessionStorage.removeItem('info_register_tab_force');
                     }
-                }, 150); // 150ms 간격으로 시도
+                }, 150);
             } else {
-                // 일반적인 경우: 여러 번 시도
                 let attempts = 0;
                 const tryActivate = setInterval(function() {
                     attempts++;
@@ -158,18 +178,14 @@ st.markdown("""
         }
     }
     
-    // 페이지 로드 시 저장된 탭 활성화
     window.addEventListener('load', function() {
         tryActivateSavedTab();
-        
-        // 탭 클릭 리스너 설정 (여러 번 시도)
         setTimeout(setupTabListeners, 200);
         setTimeout(setupTabListeners, 500);
         setTimeout(setupTabListeners, 1000);
         setTimeout(setupTabListeners, 2000);
     });
     
-    // DOM이 준비되면 즉시 실행
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function() {
             tryActivateSavedTab();
@@ -180,11 +196,9 @@ st.markdown("""
         setupTabListeners();
     }
     
-    // Streamlit이 업데이트될 때 탭 상태 확인
     let observerTimeout;
     let lastTabCheck = -1;
     const observer = new MutationObserver(function(mutations) {
-        // 디바운싱: 300ms 내 여러 변경이 있어도 한 번만 실행
         clearTimeout(observerTimeout);
         observerTimeout = setTimeout(function() {
             const savedTab = sessionStorage.getItem('info_register_tab');
@@ -193,14 +207,12 @@ st.markdown("""
             if (savedTab !== null) {
                 const tabIndex = parseInt(savedTab);
                 
-                // force 플래그가 있으면 강제로 활성화 시도
                 if (forceFlag === '1') {
                     tryActivateSavedTab();
                     setupTabListeners();
                     return;
                 }
                 
-                // 현재 활성화된 탭 확인
                 const tabs = findTabs();
                 if (tabs && tabs.length > tabIndex) {
                     let activeTab = -1;
@@ -212,7 +224,6 @@ st.markdown("""
                         }
                     });
                     
-                    // 저장된 탭과 현재 탭이 다르고, 마지막 확인과 다르면 전환
                     if (activeTab !== tabIndex && lastTabCheck !== tabIndex) {
                         activateTab(tabIndex);
                         lastTabCheck = tabIndex;
@@ -223,7 +234,6 @@ st.markdown("""
         }, 300);
     });
     
-    // DOM 변경 감지 시작
     document.addEventListener('DOMContentLoaded', function() {
         const tabsContainer = document.querySelector('[data-testid="stTabs"]') || document.body;
         observer.observe(tabsContainer, { 
@@ -234,7 +244,6 @@ st.markdown("""
         });
     });
     
-    // Streamlit의 요소가 추가될 때마다 확인
     const streamlitObserver = new MutationObserver(function(mutations) {
         const forceFlag = sessionStorage.getItem('info_register_tab_force');
         if (forceFlag === '1') {
@@ -245,7 +254,6 @@ st.markdown("""
         }
     });
     
-    // Streamlit 컨테이너 관찰
     setTimeout(function() {
         const streamlitContainer = document.querySelector('.main') || document.body;
         streamlitObserver.observe(streamlitContainer, {
@@ -268,6 +276,16 @@ if "partners" not in st.session_state:
 if "admins" not in st.session_state:
     st.session_state.admins = []
 
+# 최근 등록 항목
+if "last_registered_category" not in st.session_state:
+    st.session_state.last_registered_category = None
+if "last_registered_product" not in st.session_state:
+    st.session_state.last_registered_product = None
+if "last_registered_partner" not in st.session_state:
+    st.session_state.last_registered_partner = None
+if "last_registered_admin" not in st.session_state:
+    st.session_state.last_registered_admin = None
+
 # -------------------------------
 # 헤더 & 뒤로가기
 # -------------------------------
@@ -287,19 +305,37 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 if "current_tab" not in st.session_state:
     st.session_state.current_tab = 0
 
-# 최근 등록 항목을 저장할 session_state
-if "last_registered_category" not in st.session_state:
-    st.session_state.last_registered_category = None
-if "last_registered_product" not in st.session_state:
-    st.session_state.last_registered_product = None
-if "last_registered_partner" not in st.session_state:
-    st.session_state.last_registered_partner = None
-if "last_registered_admin" not in st.session_state:
-    st.session_state.last_registered_admin = None
-
 category_tab, product_tab, partner_tab, admin_tab = st.tabs(
     ["카테고리 등록", "품목 등록", "거래처 등록", "관리자 등록"]
 )
+
+# ============================================================
+# 각 탭별 코드 기본값(입력칸 자동 채우기) 설정
+# ============================================================
+
+# ✅ 카테고리 코드 기본값 (cat_001, cat_002, ...)
+existing_cat_codes = [c.get("code", "") for c in st.session_state.categories]
+auto_cat_code = generate_next_code("cat_", existing_cat_codes, digits=3)
+if "cat_code_input" not in st.session_state or not st.session_state["cat_code_input"]:
+    st.session_state["cat_code_input"] = auto_cat_code
+
+# ✅ 품목 코드 기본값 (pr_001, pr_002, ... - 품목 전용)
+existing_prod_codes = [p.get("code", "") for p in st.session_state.products]
+auto_prod_code = generate_next_code("pr_", existing_prod_codes, digits=3)
+if "prod_code_input" not in st.session_state or not st.session_state["prod_code_input"]:
+    st.session_state["prod_code_input"] = auto_prod_code
+
+# ✅ 거래처 코드 기본값 (pt_001, pt_002, ... - 거래처 전용)
+existing_partner_codes = [p.get("code", "") for p in st.session_state.partners]
+auto_partner_code = generate_next_code("pt_", existing_partner_codes, digits=3)
+if "p_code_input" not in st.session_state or not st.session_state["p_code_input"]:
+    st.session_state["p_code_input"] = auto_partner_code
+
+# ✅ 관리자 사번 기본값 (EMP001, EMP002, ...)
+existing_emp_codes = [a.get("emp_no", "") for a in st.session_state.admins]
+auto_emp_code = generate_next_code("EMP", existing_emp_codes, digits=3)
+if "admin_emp_no" not in st.session_state or not st.session_state["admin_emp_no"]:
+    st.session_state["admin_emp_no"] = auto_emp_code
 
 # -------------------------------
 # 카테고리 등록 탭
@@ -310,10 +346,20 @@ with category_tab:
         form_col1, form_col2, form_col3 = st.columns([2, 3, 1])
         with form_col1:
             st.caption("코드번호")
-            cat_code = st.text_input("코드번호", key="cat_code_input", label_visibility="collapsed", placeholder="cat_001")
+            cat_code = st.text_input(
+                "코드번호",
+                key="cat_code_input",
+                label_visibility="collapsed",
+                placeholder="cat_001"
+            )
         with form_col2:
             st.caption("카테고리명")
-            cat_name = st.text_input("카테고리명", key="cat_name_input", label_visibility="collapsed", placeholder="원두")
+            cat_name = st.text_input(
+                "카테고리명",
+                key="cat_name_input",
+                label_visibility="collapsed",
+                placeholder="원두"
+            )
         with form_col3:
             st.markdown("<div style='height: 37px'></div>", unsafe_allow_html=True)
             submitted = st.form_submit_button("등록", use_container_width=True)
@@ -321,33 +367,35 @@ with category_tab:
         if submitted:
             code = (cat_code or "").strip()
             name = (cat_name or "").strip()
-            if not code or not name:
-                st.warning("코드번호와 카테고리명을 모두 입력하세요.")
-            elif any(c["code"] == code for c in st.session_state.categories):
-                st.error("이미 존재하는 코드번호입니다.")
+            if not name:
+                st.warning("카테고리명을 입력하세요.")
             else:
-                new_category = {"code": code, "name": name}
-                st.session_state.categories.append(new_category)
-                st.session_state.last_registered_category = new_category
-                st.session_state.category_success = True
-                # 탭 상태를 sessionStorage에 저장 (카테고리 등록 탭 = 인덱스 0)
-                st.session_state.info_register_tab = 0
-                st.markdown("""
-                <script>
-                    // sessionStorage에 탭 인덱스 저장
-                    sessionStorage.setItem('info_register_tab', '0');
-                    // Streamlit이 업데이트되면 탭을 활성화하기 위한 플래그
-                    sessionStorage.setItem('info_register_tab_force', '1');
-                </script>
-                """, unsafe_allow_html=True)
-                st.rerun()
+                if not code:
+                    existing_codes = [c.get("code", "") for c in st.session_state.categories]
+                    code = generate_next_code("cat_", existing_codes, digits=3)
+
+                if any(c["code"] == code for c in st.session_state.categories):
+                    st.error("이미 존재하는 코드번호입니다.")
+                else:
+                    new_category = {"code": code, "name": name}
+                    st.session_state.categories.append(new_category)
+                    st.session_state.last_registered_category = new_category
+                    st.session_state.category_success = True
+
+                    st.session_state["cat_code_input"] = ""
+                    st.session_state.info_register_tab = 0
+                    st.markdown("""
+                    <script>
+                        sessionStorage.setItem('info_register_tab', '0');
+                        sessionStorage.setItem('info_register_tab_force', '1');
+                    </script>
+                    """, unsafe_allow_html=True)
+                    st.rerun()
     
-    # 성공 메시지 표시
     if st.session_state.get("category_success", False):
         st.success("✅ 카테고리가 성공적으로 등록되었습니다!")
         st.session_state.category_success = False
     
-    # 최근 등록한 카테고리 표시
     if st.session_state.last_registered_category:
         st.markdown("---")
         st.markdown("#### 📋 최근 등록한 카테고리")
@@ -358,23 +406,17 @@ with category_tab:
         with col2:
             st.write(f"**카테고리명:** {last_cat.get('name', '-')}")
 
-    # ✅ 등록된 전체 카테고리 리스트
     if st.session_state.categories:
         st.markdown("---")
         st.markdown("#### 📚 등록된 전체 카테고리")
-        
-        # 카테고리 데이터를 DataFrame으로 변환
         categories_data = []
         for idx, cat in enumerate(st.session_state.categories, start=1):
             categories_data.append({
-                "번호": str(idx),  # 문자열로 변환하여 좌측 정렬
+                "번호": str(idx),
                 "코드번호": cat.get('code', '-'),
                 "카테고리명": cat.get('name', '-')
             })
-        
         df_categories = pd.DataFrame(categories_data)
-        
-        # 표 형식으로 표시
         st.dataframe(
             df_categories,
             use_container_width=True,
@@ -402,41 +444,75 @@ with product_tab:
         r1c1, r1c2, r1c3 = st.columns([2, 3, 3])
         with r1c1:
             st.caption("코드번호")
-            pr_code = st.text_input("코드번호", value=default_code, key="prod_code_input",
-                                    label_visibility="collapsed", placeholder="pr_001")
+            pr_code = st.text_input(
+                "코드번호",
+                value=default_code,
+                key="prod_code_input",
+                label_visibility="collapsed",
+                placeholder="pr_001"
+            )
         with r1c2:
             st.caption("카테고리명")
             category_names = [c["name"] for c in st.session_state.categories]
             if category_names:
                 default_index = category_names.index(default_cat) if default_cat in category_names else 0
-                pr_category = st.selectbox("카테고리명", options=category_names, index=default_index,
-                                           key="prod_category_select", label_visibility="collapsed")
+                pr_category = st.selectbox(
+                    "카테고리명",
+                    options=category_names,
+                    index=default_index,
+                    key="prod_category_select",
+                    label_visibility="collapsed"
+                )
             else:
-                pr_category = st.text_input("카테고리명", value=default_cat, key="prod_category_input_fallback",
-                                            label_visibility="collapsed", placeholder="원두")
+                pr_category = st.text_input(
+                    "카테고리명",
+                    value=default_cat,
+                    key="prod_category_input_fallback",
+                    label_visibility="collapsed",
+                    placeholder="원두"
+                )
                 st.info("카테고리를 먼저 등록하면 여기에서 선택할 수 있습니다.")
         with r1c3:
             st.caption("품목 명")
-            pr_name = st.text_input("품목 명", value=default_name, key="prod_name_input",
-                                    label_visibility="collapsed", placeholder="디카페인 원두")
+            pr_name = st.text_input(
+                "품목 명",
+                value=default_name,
+                key="prod_name_input",
+                label_visibility="collapsed",
+                placeholder="디카페인 원두"
+            )
 
         r2c1, r2c2, r2c3, r2c4 = st.columns([2, 2, 2, 1])
         with r2c1:
             st.caption("입고 단위")
             unit_options = ["병", "박스", "kg", "g", "ml", "L", "봉투", "컵", "스푼", "갯수", "기타"]
             default_unit_index = unit_options.index(default_unit) if default_unit in unit_options else 0
-            pr_unit = st.selectbox("입고 단위", options=unit_options, index=default_unit_index,
-                                   key="prod_unit_select", label_visibility="collapsed")
+            pr_unit = st.selectbox(
+                "입고 단위",
+                options=unit_options,
+                index=default_unit_index,
+                key="prod_unit_select",
+                label_visibility="collapsed"
+            )
         with r2c2:
             st.caption("상태")
             default_status_label = "사용" if default_status else "단종"
-            pr_status = st.selectbox("", options=["사용", "단종"],
-                                     index=(0 if default_status_label == "사용" else 1),
-                                     label_visibility="collapsed")
+            pr_status = st.selectbox(
+                "",
+                options=["사용", "단종"],
+                index=(0 if default_status_label == "사용" else 1),
+                label_visibility="collapsed"
+            )
         with r2c3:
             st.caption("안전재고")
-            pr_safety = st.number_input("안전재고", min_value=0, step=1, value=0,
-                                        key="prod_safety_input", label_visibility="collapsed")
+            pr_safety = st.number_input(
+                "안전재고",
+                min_value=0,
+                step=1,
+                value=0,
+                key="prod_safety_input",
+                label_visibility="collapsed"
+            )
         with r2c4:
             st.caption("\u00A0")
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
@@ -447,37 +523,42 @@ with product_tab:
             cat  = (pr_category or "").strip()
             name = (pr_name or "").strip()
             unit = (pr_unit or "").strip()
-            if not code or not name:
-                st.warning("코드번호와 품목명을 입력하세요.")
+            if not name:
+                st.warning("품목명을 입력하세요.")
             else:
+                if not code:
+                    existing_codes = [p.get("code", "") for p in st.session_state.products]
+                    code = generate_next_code("pr_", existing_codes, digits=3)
+
                 if any(p["code"] == code for p in st.session_state.products):
                     st.error("이미 존재하는 코드번호입니다.")
                 else:
                     new_product = {
-                        "code": code, "category": cat, "name": name, "unit": unit,
-                        "status": pr_status, "safety": int(pr_safety)
+                        "code": code,
+                        "category": cat,
+                        "name": name,
+                        "unit": unit,
+                        "status": pr_status,
+                        "safety": int(pr_safety)
                     }
                     st.session_state.products.append(new_product)
                     st.session_state.last_registered_product = new_product
                     st.session_state.product_success = True
-                    # 탭 상태를 sessionStorage에 저장 (품목 등록 탭 = 인덱스 1)
+
+                    st.session_state["prod_code_input"] = ""
                     st.session_state.info_register_tab = 1
                     st.markdown("""
                     <script>
-                        // sessionStorage에 탭 인덱스 저장
                         sessionStorage.setItem('info_register_tab', '1');
-                        // Streamlit이 업데이트되면 탭을 활성화하기 위한 플래그
                         sessionStorage.setItem('info_register_tab_force', '1');
                     </script>
                     """, unsafe_allow_html=True)
                     st.rerun()
     
-    # 성공 메시지 표시
     if st.session_state.get("product_success", False):
         st.success("✅ 품목이 성공적으로 등록되었습니다!")
         st.session_state.product_success = False
     
-    # 최근 등록한 품목 표시
     if st.session_state.last_registered_product:
         st.markdown("---")
         st.markdown("#### 📋 최근 등록한 품목")
@@ -492,16 +573,13 @@ with product_tab:
         with col4:
             st.write(f"**단위:** {last_prod.get('unit', '-')}")
 
-    # ✅ 등록된 전체 품목 리스트
     if st.session_state.products:
         st.markdown("---")
         st.markdown("#### 📚 등록된 전체 품목")
-        
-        # 품목 데이터를 DataFrame으로 변환
         products_data = []
         for idx, p in enumerate(st.session_state.products, start=1):
             products_data.append({
-                "번호": str(idx),  # 문자열로 변환하여 좌측 정렬
+                "번호": str(idx),
                 "코드번호": p.get('code', '-'),
                 "품목명": p.get('name', '-'),
                 "카테고리": p.get('category', '-'),
@@ -509,19 +587,16 @@ with product_tab:
                 "상태": p.get('status', '-'),
                 "안전재고": p.get('safety', '-')
             })
-        
         df_products = pd.DataFrame(products_data)
-        
-        # 표 형식으로 표시
         st.dataframe(
             df_products,
             use_container_width=True,
             hide_index=True,
             column_config={
                 "번호": st.column_config.TextColumn("번호", width="small"),
-                "코드번호": st.column_config.TextColumn("코드번호", width="small"),
-                "품목명": st.column_config.TextColumn("품목명", width="medium"),
-                "카테고리": st.column_config.TextColumn("카테고리", width="small"),
+                "코드번호": st.column_config.TextColumn("코드번호", width="medium"),
+                "품목명": st.column_config.TextColumn("품목명", width="large"),
+                "카테고리": st.column_config.TextColumn("카테고리", width="medium"),
                 "단위": st.column_config.TextColumn("단위", width="small"),
                 "상태": st.column_config.TextColumn("상태", width="small"),
                 "안전재고": st.column_config.TextColumn("안전재고", width="small")
@@ -538,58 +613,94 @@ with partner_tab:
         form_col1, form_col2, form_col3, form_col4, form_col5, form_col6 = st.columns([1.5, 2, 2, 2, 3, 1])
         with form_col1:
             st.caption("거래처 코드")
-            p_code = st.text_input("거래처 코드", key="p_code_input", label_visibility="collapsed", placeholder="P001")
+            p_code = st.text_input(
+                "거래처 코드",
+                key="p_code_input",
+                label_visibility="collapsed",
+                placeholder="pt_001"
+            )
         with form_col2:
             st.caption("거래처명")
-            p_name = st.text_input("거래처명", key="p_name_input", label_visibility="collapsed", placeholder="○○커피")
+            p_name = st.text_input(
+                "거래처명",
+                key="p_name_input",
+                label_visibility="collapsed",
+                placeholder="○○커피"
+            )
         with form_col3:
             st.caption("사업자번호")
-            p_bus = st.text_input("사업자번호", key="p_bus_input", label_visibility="collapsed", placeholder="123-45-67890")
+            p_bus = st.text_input(
+                "사업자번호",
+                key="p_bus_input",
+                label_visibility="collapsed",
+                placeholder="123-45-67890"
+            )
         with form_col4:
             st.caption("대표자 이름")
-            p_rep = st.text_input("대표자 이름", key="p_rep_input", label_visibility="collapsed", placeholder="홍길동")
+            p_rep = st.text_input(
+                "대표자 이름",
+                key="p_rep_input",
+                label_visibility="collapsed",
+                placeholder="홍길동"
+            )
         with form_col5:
             st.caption("주소")
-            p_addr = st.text_input("주소", key="p_addr_input", label_visibility="collapsed", placeholder="서울시 강남구...")
+            p_addr = st.text_input(
+                "주소",
+                key="p_addr_input",
+                label_visibility="collapsed",
+                placeholder="서울시 강남구..."
+            )
         with form_col6:
             st.markdown("<div style='height: 37px'></div>", unsafe_allow_html=True)
             partner_submitted = st.form_submit_button("등록", use_container_width=True)
 
         if partner_submitted:
-            if not p_code or not p_name:
-                st.error("거래처 코드와 거래처명은 필수 입력 항목입니다.")
-            elif any(p["code"] == p_code for p in st.session_state.partners):
-                st.error("이미 존재하는 거래처 코드입니다.")
-            elif p_bus and not re.match(r'^[0-9\-]+$', p_bus):
+            code = (p_code or "").strip()
+            name = (p_name or "").strip()
+            bus  = (p_bus or "").strip()
+            rep  = (p_rep or "").strip()
+            addr = (p_addr or "").strip()
+
+            if not name:
+                st.error("거래처명은 필수 입력 항목입니다.")
+            elif bus and not re.match(r'^[0-9\-]+$', bus):
                 st.error("사업자번호는 숫자와 하이픈(-)만 입력 가능합니다.")
-            elif p_rep and not re.match(r'^[가-힣a-zA-Z\\s]+$', p_rep):
+            elif rep and not re.match(r'^[가-힣a-zA-Z\\s]+$', rep):
                 st.error("대표자 이름은 한글과 영문만 입력 가능합니다.")
             else:
-                new_partner = {
-                    "code": p_code, "name": p_name, "business_number": p_bus,
-                    "representative": p_rep, "address": p_addr
-                }
-                st.session_state.partners.append(new_partner)
-                st.session_state.last_registered_partner = new_partner
-                st.session_state.partner_success = True
-                # 탭 상태를 sessionStorage에 저장 (거래처 등록 탭 = 인덱스 2)
-                st.session_state.info_register_tab = 2
-                st.markdown("""
-                <script>
-                    // sessionStorage에 탭 인덱스 저장
-                    sessionStorage.setItem('info_register_tab', '2');
-                    // Streamlit이 업데이트되면 탭을 활성화하기 위한 플래그
-                    sessionStorage.setItem('info_register_tab_force', '1');
-                </script>
-                """, unsafe_allow_html=True)
-                st.rerun()
+                if not code:
+                    existing_codes = [p.get("code", "") for p in st.session_state.partners]
+                    code = generate_next_code("pt_", existing_codes, digits=3)
+
+                if any(p["code"] == code for p in st.session_state.partners):
+                    st.error("이미 존재하는 거래처 코드입니다.")
+                else:
+                    new_partner = {
+                        "code": code,
+                        "name": name,
+                        "business_number": bus,
+                        "representative": rep,
+                        "address": addr
+                    }
+                    st.session_state.partners.append(new_partner)
+                    st.session_state.last_registered_partner = new_partner
+                    st.session_state.partner_success = True
+
+                    st.session_state["p_code_input"] = ""
+                    st.session_state.info_register_tab = 2
+                    st.markdown("""
+                    <script>
+                        sessionStorage.setItem('info_register_tab', '2');
+                        sessionStorage.setItem('info_register_tab_force', '1');
+                    </script>
+                    """, unsafe_allow_html=True)
+                    st.rerun()
     
-    # 성공 메시지 표시
     if st.session_state.get("partner_success", False):
         st.success("✅ 거래처가 성공적으로 등록되었습니다!")
         st.session_state.partner_success = False
     
-    # 최근 등록한 거래처 표시
     if st.session_state.last_registered_partner:
         st.markdown("---")
         st.markdown("#### 📋 최근 등록한 거래처")
@@ -604,26 +715,20 @@ with partner_tab:
         with col3:
             st.write(f"**주소:** {last_part.get('address', '-')}")
 
-    # ✅ 등록된 전체 거래처 리스트
     if st.session_state.partners:
         st.markdown("---")
         st.markdown("#### 📚 등록된 전체 거래처")
-        
-        # 거래처 데이터를 DataFrame으로 변환 (등록순으로 표시)
         partners_data = []
         for idx, p in enumerate(st.session_state.partners, start=1):
             partners_data.append({
-                "번호": str(idx),  # 문자열로 변환하여 좌측 정렬
+                "번호": str(idx),
                 "거래처 코드": p.get('code', '-'),
                 "거래처명": p.get('name', '-'),
                 "사업자번호": p.get('business_number', '-'),
                 "대표자": p.get('representative', '-'),
                 "주소": p.get('address', '-')
             })
-        
         df_partners = pd.DataFrame(partners_data)
-        
-        # 표 형식으로 표시
         st.dataframe(
             df_partners,
             use_container_width=True,
@@ -645,66 +750,119 @@ with admin_tab:
     st.subheader("관리자 등록")
 
     with st.form("admin_form", clear_on_submit=True):
-        form_col1, form_col2, form_col3, form_col4, form_col5, form_col6, form_col7, form_col8 = st.columns([1.2, 1, 1.2, 1.5, 1.5, 1.2, 1.5, 1.2])
+        form_col1, form_col2, form_col3, form_col4, form_col5, form_col6, form_col7, form_col8 = st.columns(
+            [1.2, 1, 1.2, 1.5, 1.5, 1.2, 1.5, 1.2]
+        )
         with form_col1:
             st.caption("사번번호")
-            emp_no = st.text_input("사번번호", key="admin_emp_no", label_visibility="collapsed", placeholder="EMP001")
+            emp_no = st.text_input(
+                "사번번호",
+                key="admin_emp_no",
+                label_visibility="collapsed",
+                placeholder="EMP001"
+            )
         with form_col2:
             st.caption("이름")
-            name = st.text_input("이름", key="admin_name", label_visibility="collapsed", placeholder="홍길동")
+            name = st.text_input(
+                "이름",
+                key="admin_name",
+                label_visibility="collapsed",
+                placeholder="홍길동"
+            )
         with form_col3:
             st.caption("성별")
-            gender = st.selectbox("성별", ["남성", "여성"], key="admin_gender", label_visibility="collapsed")
+            gender = st.selectbox(
+                "성별",
+                ["남성", "여성"],
+                key="admin_gender",
+                label_visibility="collapsed"
+            )
         with form_col4:
             st.caption("이메일")
-            email = st.text_input("이메일", key="admin_email", label_visibility="collapsed", placeholder="hong@example.com")
+            email = st.text_input(
+                "이메일",
+                key="admin_email",
+                label_visibility="collapsed",
+                placeholder="hong@example.com"
+            )
         with form_col5:
             st.caption("전화번호")
-            phone = st.text_input("전화번호", key="admin_phone", label_visibility="collapsed", placeholder="010-1234-5678")
+            phone = st.text_input(
+                "전화번호",
+                key="admin_phone",
+                label_visibility="collapsed",
+                placeholder="010-1234-5678"
+            )
         with form_col6:
             st.caption("직급")
-            position = st.selectbox("직급", ["직원", "매니저", "파트타이머"], key="admin_position", label_visibility="collapsed")
+            position = st.selectbox(
+                "직급",
+                ["직원", "매니저", "파트타이머"],
+                key="admin_position",
+                label_visibility="collapsed"
+            )
         with form_col7:
             st.caption("관리 종류")
-            management_type = st.selectbox("관리 종류", ["출/입고 관리", "청소", "손님 응대", "음료 제조", "음식 제조", "기타"], key="admin_management", label_visibility="collapsed")
+            management_type = st.selectbox(
+                "관리 종류",
+                ["출/입고 관리", "청소", "손님 응대", "음료 제조", "음식 제조", "기타"],
+                key="admin_management",
+                label_visibility="collapsed"
+            )
         with form_col8:
             st.caption("재직현황")
-            status = st.selectbox("재직현황", ["재직", "퇴사", "휴직"], key="admin_status", label_visibility="collapsed")
+            status = st.selectbox(
+                "재직현황",
+                ["재직", "퇴사", "휴직"],
+                key="admin_status",
+                label_visibility="collapsed"
+            )
 
         st.markdown("<div style='height: 20px'></div>", unsafe_allow_html=True)
         admin_submitted = st.form_submit_button("등록", use_container_width=True)
 
         if admin_submitted:
-            if not emp_no or not name:
-                st.error("사번번호와 이름은 필수 입력 항목입니다.")
-            elif any(a["emp_no"] == emp_no for a in st.session_state.admins):
-                st.error("이미 존재하는 사번번호입니다.")
+            emp = (emp_no or "").strip()
+            nm  = (name or "").strip()
+
+            if not nm:
+                st.error("이름은 필수 입력 항목입니다.")
             else:
-                new_admin = {
-                    "emp_no": emp_no, "name": name, "gender": gender, "email": email, "phone": phone,
-                    "position": position, "management_type": management_type, "status": status
-                }
-                st.session_state.admins.append(new_admin)
-                st.session_state.last_registered_admin = new_admin
-                st.session_state.admin_success = True
-                # 탭 상태를 sessionStorage에 저장 (관리자 등록 탭 = 인덱스 3)
-                st.session_state.info_register_tab = 3
-                st.markdown("""
-                <script>
-                    // sessionStorage에 탭 인덱스 저장
-                    sessionStorage.setItem('info_register_tab', '3');
-                    // Streamlit이 업데이트되면 탭을 활성화하기 위한 플래그
-                    sessionStorage.setItem('info_register_tab_force', '1');
-                </script>
-                """, unsafe_allow_html=True)
-                st.rerun()
+                if not emp:
+                    existing_emp = [a.get("emp_no", "") for a in st.session_state.admins]
+                    emp = generate_next_code("EMP", existing_emp, digits=3)
+
+                if any(a["emp_no"] == emp for a in st.session_state.admins):
+                    st.error("이미 존재하는 사번번호입니다.")
+                else:
+                    new_admin = {
+                        "emp_no": emp,
+                        "name": nm,
+                        "gender": gender,
+                        "email": email,
+                        "phone": phone,
+                        "position": position,
+                        "management_type": management_type,
+                        "status": status
+                    }
+                    st.session_state.admins.append(new_admin)
+                    st.session_state.last_registered_admin = new_admin
+                    st.session_state.admin_success = True
+
+                    st.session_state["admin_emp_no"] = ""
+                    st.session_state.info_register_tab = 3
+                    st.markdown("""
+                    <script>
+                        sessionStorage.setItem('info_register_tab', '3');
+                        sessionStorage.setItem('info_register_tab_force', '1');
+                    </script>
+                    """, unsafe_allow_html=True)
+                    st.rerun()
     
-    # 성공 메시지 표시
     if st.session_state.get("admin_success", False):
         st.success("✅ 관리자가 성공적으로 등록되었습니다!")
         st.session_state.admin_success = False
     
-    # 최근 등록한 관리자 표시
     if st.session_state.last_registered_admin:
         st.markdown("---")
         st.markdown("#### 📋 최근 등록한 관리자")
@@ -722,8 +880,7 @@ with admin_tab:
         with col4:
             st.write(f"**이메일:** {last_admin.get('email', '-')}")
             st.write(f"**전화번호:** {last_admin.get('phone', '-')}")
-
-    # ✅ 등록된 전체 관리자 리스트
+    
     if st.session_state.admins:
         st.markdown("---")
         st.markdown("#### 📚 등록된 전체 관리자")

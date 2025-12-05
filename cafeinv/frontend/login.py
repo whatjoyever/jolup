@@ -28,9 +28,10 @@ if "sample_initialized" not in st.session_state:
 # 샘플 데이터 세팅 함수
 # ------------------------------------------------
 def seed_sample_data():
-    """처음 로그인할 때 한 번만 샘플 데이터 주입"""
-    if st.session_state.sample_initialized:
-        return
+    """처음 로그인할 때 샘플 데이터 주입 (개발 단계: 매번 새로 세팅)"""
+    # 방법 1: 개발 중에는 sample_initialized 체크를 잠깐 끔
+    # if st.session_state.sample_initialized:
+    #     return
 
     # 1) 카테고리 (원재료 카테고리)
     if "categories" not in st.session_state:
@@ -70,7 +71,7 @@ def seed_sample_data():
             "code": "pr_003",
             "category": "시럽",
             "name": "카라멜 시럽",
-            "unit": "병",
+            "unit": "kg",
             "status": "사용",
             "safety": 1,
         },
@@ -78,7 +79,7 @@ def seed_sample_data():
             "code": "pr_004",
             "category": "시럽",
             "name": "바닐라 시럽",
-            "unit": "병",
+            "unit": "kg",
             "status": "사용",
             "safety": 1,
         },
@@ -86,7 +87,7 @@ def seed_sample_data():
             "code": "pr_005",
             "category": "시럽",
             "name": "헤이즐넛 시럽",
-            "unit": "병",
+            "unit": "kg",
             "status": "사용",
             "safety": 1,
         },
@@ -94,17 +95,17 @@ def seed_sample_data():
             "code": "pr_006",
             "category": "유제품",
             "name": "우유",
-            "unit": "kg",
+            "unit": "L",
             "status": "사용",
-            "safety": 10,
+            "safety": 20,
         },
         {
             "code": "pr_007",
             "category": "유제품",
             "name": "두유",
-            "unit": "ml",
+            "unit": "L",
             "status": "사용",
-            "safety": 1500,
+            "safety": 3,
         },
         {
             "code": "pr_008",
@@ -216,7 +217,7 @@ def seed_sample_data():
             "gender": "여",
             "email": "barista1@stockmate.com",
             "phone": "010-3333-4444",
-            "position": "수석 바리스타",
+            "position": "파트타이머",
             "management_type": "원두/음료 레시피",
             "status": "재직",
         },
@@ -229,71 +230,377 @@ def seed_sample_data():
     st.session_state.last_registered_partner = sample_partners[0]
     st.session_state.last_registered_admin = sample_admins[0]
 
-    # 5) 입고/출고 샘플 (재고/입고 관련 페이지에서 사용)
+    # ------------------------------------------------
+    # 5) 발주 / 입고 / 출고 샘플
+    # ------------------------------------------------
+    # 5-1) 발주 샘플 (order_list 화면용) - 단위 kg / L / 개
+    if "orders" not in st.session_state:
+        st.session_state.orders = []
+
+    sample_orders = [
+        {
+            "order_no": "PO-20251120-001",
+            "order_date": "2025-11-20",
+            "partner_code": "pt_001",
+            "partner_name": "서울커피유통",
+            "product_code": "pr_001",
+            "product_name": "에스프레소 원두",
+            "order_qty": 12.0,   # 12 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-20",
+            "status": "입고완료",
+            "staff": "김카페",
+            "note": "초기 원두 발주",
+        },
+        {
+            "order_no": "PO-20251120-002",
+            "order_date": "2025-11-20",
+            "partner_code": "pt_001",
+            "partner_name": "서울커피유통",
+            "product_code": "pr_002",
+            "product_name": "디카페인 원두",
+            "order_qty": 3.0,    # 3 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-20",
+            "status": "입고완료",
+            "staff": "김카페",
+            "note": "초기 디카페인 발주",
+        },
+        {
+            "order_no": "PO-20251122-001",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_002",
+            "partner_name": "스위트시럽상회",
+            "product_code": "pr_003",
+            "product_name": "카라멜 시럽",
+            "order_qty": 2.0,    # 2 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 카라멜 시럽 발주",
+        },
+        {
+            "order_no": "PO-20251122-002",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_002",
+            "partner_name": "스위트시럽상회",
+            "product_code": "pr_004",
+            "product_name": "바닐라 시럽",
+            "order_qty": 2.0,    # 2 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 바닐라 시럽 발주",
+        },
+        {
+            "order_no": "PO-20251122-003",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_002",
+            "partner_name": "스위트시럽상회",
+            "product_code": "pr_005",
+            "product_name": "헤이즐넛 시럽",
+            "order_qty": 2.0,    # 2 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 헤이즐넛 시럽 발주",
+        },
+        {
+            "order_no": "PO-20251121-001",
+            "order_date": "2025-11-21",
+            "partner_code": "pt_003",
+            "partner_name": "해밀유제품",
+            "product_code": "pr_006",
+            "product_name": "우유",
+            "order_qty": 30.0,   # 30 L
+            "order_unit": "L",
+            "expected_date": "2025-11-21",
+            "status": "입고완료",
+            "staff": "이바리스타",
+            "note": "초기 우유 발주",
+        },
+        {
+            "order_no": "PO-20251121-002",
+            "order_date": "2025-11-21",
+            "partner_code": "pt_003",
+            "partner_name": "해밀유제품",
+            "product_code": "pr_007",
+            "product_name": "두유",
+            "order_qty": 3.0,    # 3 L
+            "order_unit": "L",
+            "expected_date": "2025-11-21",
+            "status": "입고완료",
+            "staff": "이바리스타",
+            "note": "초기 두유 발주",
+        },
+        {
+            "order_no": "PO-20251122-004",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_002",
+            "partner_name": "스위트시럽상회",
+            "product_code": "pr_008",
+            "product_name": "휘핑크림",
+            "order_qty": 1.2,    # 1.2 kg (1200 g)
+            "order_unit": "kg",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 휘핑크림 발주",
+        },
+        {
+            "order_no": "PO-20251122-005",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_002",
+            "partner_name": "스위트시럽상회",
+            "product_code": "pr_009",
+            "product_name": "초코 파우더",
+            "order_qty": 1.0,    # 1 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 초코 파우더 발주",
+        },
+        {
+            "order_no": "PO-20251122-006",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_004",
+            "partner_name": "브레드팩토리",
+            "product_code": "pr_010",
+            "product_name": "버터 크루아상",
+            "order_qty": 10.0,   # 10개
+            "order_unit": "개",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 디저트 발주",
+        },
+    ]
+    st.session_state.orders = sample_orders
+    st.session_state.last_order = sample_orders[-1]
+
+    # 5-2) 입고/출고 샘플 (네가 처음 준 버전 그대로 유지)
     if "received_items" not in st.session_state:
         st.session_state.received_items = []
     if "releases" not in st.session_state:
         st.session_state.releases = []
 
+    # ✅ 재고 + 유통기한까지 맞춘 입고 샘플
     sample_received_list = [
-        {
-            "product_code": "pr_003",
-            "product_name": "카라멜 시럽",
-            "category": "시럽",
-            "unit": "ml",
-            "order_qty": 10,
-            "actual_qty": 10,
-            "accumulated_qty": 10,
-            "remaining_qty": 0,
-            "order_price": 5000,
-            "actual_price": 5000,
-            "receive_date": "2025-11-22",
-            "expiry": "2026-11-22",
-            "staff": "장희원",
-            "special_note": "초기 샘플 입고",
-            "partner": "pt_002",
-            "receive_type": "일반 입고",
-            "receive_status": "완료",
-        },
+        # 에스프레소 원두: (12,001g 입고 - 1g 출고) / 1000 ≒ 12 kg
         {
             "product_code": "pr_001",
             "product_name": "에스프레소 원두",
             "category": "원두",
             "unit": "g",
-            "order_qty": 5,
-            "actual_qty": 5,
-            "accumulated_qty": 5,
+            "order_qty": 12000,
+            "actual_qty": 12000,
+            "accumulated_qty": 12000,
             "remaining_qty": 0,
-            "order_price": 30000,
-            "actual_price": 30000,
+            "order_price": 24000,
+            "actual_price": 24000,
             "receive_date": "2025-11-20",
-            "expiry": "2026-05-20",
+            "expiry": "2026-05-20",          # 유통기한
             "staff": "김카페",
-            "special_note": "오픈 준비용 입고",
+            "special_note": "초기 원두 재고",
             "partner": "pt_001",
             "receive_type": "정기 발주",
             "receive_status": "완료",
         },
+
+        # 디카페인 원두: 3000g → 3kg
+        {
+            "product_code": "pr_002",
+            "product_name": "디카페인 원두",
+            "category": "원두",
+            "unit": "g",
+            "order_qty": 3000,
+            "actual_qty": 3000,
+            "accumulated_qty": 3000,
+            "remaining_qty": 0,
+            "order_price": 32000,
+            "actual_price": 32000,
+            "receive_date": "2025-11-20",
+            "expiry": "2026-05-20",
+            "staff": "김카페",
+            "special_note": "초기 디카페인 재고",
+            "partner": "pt_001",
+            "receive_type": "정기 발주",
+            "receive_status": "완료",
+        },
+
+        # 카라멜 시럽: (2002mL 입고 - 2mL 출고) / 1000 = 2L
+        {
+            "product_code": "pr_003",
+            "product_name": "카라멜 시럽",
+            "category": "시럽",
+            "unit": "mL",
+            "order_qty": 2000,
+            "actual_qty": 2000,
+            "accumulated_qty": 2000,
+            "remaining_qty": 0,
+            "order_price": 12500,
+            "actual_price": 12500,
+            "receive_date": "2025-11-22",
+            "expiry": "2026-11-22",
+            "staff": "장희원",
+            "special_note": "초기 카라멜 시럽 재고",
+            "partner": "pt_002",
+            "receive_type": "일반 입고",
+            "receive_status": "완료",
+        },
+
+        # 바닐라 시럽: 2000mL → 2L
+        {
+            "product_code": "pr_004",
+            "product_name": "바닐라 시럽",
+            "category": "시럽",
+            "unit": "mL",
+            "order_qty": 2000,
+            "actual_qty": 2000,
+            "accumulated_qty": 2000,
+            "remaining_qty": 0,
+            "order_price": 12500,
+            "actual_price": 12500,
+            "receive_date": "2025-11-22",
+            "expiry": "2026-11-22",
+            "staff": "장희원",
+            "special_note": "초기 바닐라 시럽 재고",
+            "partner": "pt_002",
+            "receive_type": "일반 입고",
+            "receive_status": "완료",
+        },
+
+        # 헤이즐넛 시럽: 2000mL → 2L
+        {
+            "product_code": "pr_005",
+            "product_name": "헤이즐넛 시럽",
+            "category": "시럽",
+            "unit": "mL",
+            "order_qty": 2000,
+            "actual_qty": 2000,
+            "accumulated_qty": 2000,
+            "remaining_qty": 0,
+            "order_price": 12500,
+            "actual_price": 12500,
+            "receive_date": "2025-11-22",
+            "expiry": "2026-11-22",
+            "staff": "장희원",
+            "special_note": "초기 헤이즐넛 시럽 재고",
+            "partner": "pt_002",
+            "receive_type": "일반 입고",
+            "receive_status": "완료",
+        },
+
+        # 우유: 30000mL → 30L
         {
             "product_code": "pr_006",
             "product_name": "우유",
             "category": "유제품",
-            "unit": "ml",
-            "order_qty": 20,
-            "actual_qty": 20,
-            "accumulated_qty": 20,
+            "unit": "mL",
+            "order_qty": 30000,
+            "actual_qty": 30000,
+            "accumulated_qty": 30000,
             "remaining_qty": 0,
-            "order_price": 20000,
-            "actual_price": 20000,
+            "order_price": 2000,
+            "actual_price": 2000,
             "receive_date": "2025-11-21",
-            "expiry": "2025-11-28",
+            "expiry": "2025-11-28",          # 우유라 짧게
             "staff": "이바리스타",
-            "special_note": "주말 대비 추가 입고",
+            "special_note": "초기 우유 재고",
             "partner": "pt_003",
             "receive_type": "긴급 입고",
             "receive_status": "완료",
         },
+
+        # 두유: 3000mL → 3L
+        {
+            "product_code": "pr_007",
+            "product_name": "두유",
+            "category": "유제품",
+            "unit": "mL",
+            "order_qty": 3000,
+            "actual_qty": 3000,
+            "accumulated_qty": 3000,
+            "remaining_qty": 0,
+            "order_price": 3000,
+            "actual_price": 3000,
+            "receive_date": "2025-11-21",
+            "expiry": "2025-12-05",
+            "staff": "이바리스타",
+            "special_note": "초기 두유 재고",
+            "partner": "pt_003",
+            "receive_type": "긴급 입고",
+            "receive_status": "완료",
+        },
+
+        # 휘핑크림: 1200g
+        {
+            "product_code": "pr_008",
+            "product_name": "휘핑크림",
+            "category": "토핑",
+            "unit": "g",
+            "order_qty": 1200,
+            "actual_qty": 1200,
+            "accumulated_qty": 1200,
+            "remaining_qty": 0,
+            "order_price": 10000,
+            "actual_price": 10000,
+            "receive_date": "2025-11-22",
+            "expiry": "2026-02-22",
+            "staff": "장희원",
+            "special_note": "초기 휘핑크림 재고",
+            "partner": "pt_002",
+            "receive_type": "일반 입고",
+            "receive_status": "완료",
+        },
+
+        # 초코 파우더: 1000g → 1kg
+        {
+            "product_code": "pr_009",
+            "product_name": "초코 파우더",
+            "category": "토핑",
+            "unit": "g",
+            "order_qty": 1000,
+            "actual_qty": 1000,
+            "accumulated_qty": 1000,
+            "remaining_qty": 0,
+            "order_price": 18000,
+            "actual_price": 18000,
+            "receive_date": "2025-11-22",
+            "expiry": "2027-11-22",
+            "staff": "장희원",
+            "special_note": "초기 초코 파우더 재고",
+            "partner": "pt_002",
+            "receive_type": "일반 입고",
+            "receive_status": "완료",
+        },
+
+        # 버터 크루아상: 10개 입고 (5개 출고 샘플 → 현재 재고 5개)
+        {
+            "product_code": "pr_010",
+            "product_name": "버터 크루아상",
+            "category": "디저트",
+            "unit": "개",
+            "order_qty": 10,
+            "actual_qty": 10,
+            "accumulated_qty": 10,
+            "remaining_qty": 0,
+            "order_price": 600,
+            "actual_price": 600,
+            "receive_date": "2025-11-22",
+            "expiry": "2025-11-25",          # 디저트라 짧게
+            "staff": "장희원",
+            "special_note": "초기 디저트 재고",
+            "partner": "pt_004",
+            "receive_type": "일반 입고",
+            "receive_status": "완료",
+        },
     ]
+
     st.session_state.received_items = sample_received_list
 
     sample_releases = [
@@ -593,7 +900,7 @@ def seed_sample_data():
 
     st.session_state.recipes = sample_recipes
 
-    # 한 번만 실행되도록 플래그
+    # 한 번만 실행되도록 플래그(지금은 체크 안 쓰지만 남겨둠)
     st.session_state.sample_initialized = True
 
 
@@ -601,7 +908,6 @@ def seed_sample_data():
 # 이미 로그인된 상태면 바로 메인으로 보내기
 # ------------------------------------------------
 if st.session_state.logged_in:
-    # 혹시 샘플이 안 들어가 있었으면 여기서 한 번 더 보장
     seed_sample_data()
     st.switch_page(DEST_MAIN)
     st.stop()
@@ -650,7 +956,6 @@ with st.container():
                 </span>
             </div>
             <div class="login-title">Stock Mate 로그인</div>
-            
         </div>
         """,
         unsafe_allow_html=True,
@@ -667,11 +972,11 @@ if login_clicked:
     if not uid or not pw:
         st.warning("아이디와 비밀번호를 모두 입력하세요.")
     else:
-        # 여기서는 단순히 '값이 있으면 로그인 성공'으로 처리 (과제 시연용)
+        # 단순 시연용 로그인 처리
         st.session_state.user = uid
         st.session_state.logged_in = True
 
-        # ✅ 로그인 성공 시 샘플 데이터 세팅 (자동)
+        # 로그인 성공 시 샘플 데이터 세팅
         seed_sample_data()
 
         st.success("로그인 성공! 메인 화면으로 이동합니다.")
