@@ -70,6 +70,10 @@ if "admin_selected" not in st.session_state:
 if "admin_edit_mode" not in st.session_state:
     st.session_state.admin_edit_mode = False
 
+# 현재 선택된 탭 인덱스 저장
+if "current_tab_index" not in st.session_state:
+    st.session_state.current_tab_index = 1  # 기본값: 품목 목록 탭 (인덱스 1)
+
 # -------------------------------
 # 헤더 & 뒤로가기 & 신규 등록 버튼
 # -------------------------------
@@ -86,6 +90,37 @@ with button_col2:
         st.switch_page("pages/info_register.py")
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+# 탭 상태 유지를 위한 JavaScript
+if st.session_state.get("current_tab_index") is not None:
+    tab_index = st.session_state.current_tab_index
+    st.markdown(
+        f"""
+        <script>
+        // 즉시 실행 및 DOMContentLoaded 이벤트 모두 처리
+        function selectTab() {{
+            setTimeout(function() {{
+                var tabs = document.querySelectorAll('[data-baseweb="tab"]');
+                if (tabs.length > {tab_index}) {{
+                    tabs[{tab_index}].click();
+                }}
+            }}, 100);
+        }}
+        
+        // 즉시 실행
+        selectTab();
+        
+        // DOMContentLoaded 이벤트
+        if (document.readyState === 'loading') {{
+            document.addEventListener('DOMContentLoaded', selectTab);
+        }}
+        
+        // load 이벤트
+        window.addEventListener('load', selectTab);
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
 
 # -------------------------------
 # 탭 구조
@@ -120,150 +155,170 @@ with category_tab:
             if search_term in c["code"].lower() or search_term in c["name"].lower()
         ]
 
-    with st.form("category_list_form"):
-        if st.session_state.category_edit_mode:
-            title_col, btn_col1, btn_col2, btn_col3 = st.columns([5, 1, 1, 1])
-            with title_col:
-                st.subheader("카테고리 목록")
-            with btn_col1:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("선택 삭제", use_container_width=True):
-                    if not st.session_state.category_selected:
-                        st.info("삭제할 항목을 선택하세요.")
-                    else:
-                        for i in sorted(
-                            st.session_state.category_selected, reverse=True
-                        ):
-                            if 0 <= i < len(st.session_state.categories):
-                                st.session_state.categories.pop(i)
-                        st.session_state.category_selected = set()
-                        st.success("선택한 항목을 삭제했습니다.")
-
-            with btn_col2:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("전체 삭제", use_container_width=True):
-                    st.session_state.categories = []
+    # 버튼 영역 (form 밖)
+    if st.session_state.category_edit_mode:
+        title_col, btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(
+            [5, 1, 1, 1, 1]
+        )
+        with title_col:
+            st.subheader("카테고리 목록")
+        with btn_col1:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("선택 삭제", use_container_width=True, key="cat_select_delete"):
+                if not st.session_state.category_selected:
+                    st.info("삭제할 항목을 선택하세요.")
+                else:
+                    for i in sorted(
+                        st.session_state.category_selected, reverse=True
+                    ):
+                        if 0 <= i < len(st.session_state.categories):
+                            st.session_state.categories.pop(i)
                     st.session_state.category_selected = set()
-                    st.success("전체 항목을 삭제했습니다.")
+                    st.success("선택한 항목을 삭제했습니다.")
+                    st.rerun()
 
-            with btn_col3:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("저장", use_container_width=True):
-                    for idx, row in enumerate(st.session_state.categories):
-                        new_code = (
-                            st.session_state.get(f"cat_code_{idx}", row["code"]).strip()
-                        )
-                        new_name = (
-                            st.session_state.get(f"cat_name_{idx}", row["name"]).strip()
-                        )
-                        if any(
-                            c["code"] == new_code and i != idx
-                            for i, c in enumerate(st.session_state.categories)
-                        ):
-                            st.error(f"'{new_code}'는 이미 존재하는 코드번호입니다.")
-                        else:
-                            st.session_state.categories[idx] = {
-                                "code": new_code,
-                                "name": new_name,
-                            }
-                    st.session_state.category_edit_mode = False
-                    st.success("저장되었습니다.")
+        with btn_col2:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("전체 삭제", use_container_width=True, key="cat_all_delete"):
+                st.session_state.categories = []
+                st.session_state.category_selected = set()
+                st.success("전체 항목을 삭제했습니다.")
+                st.rerun()
 
-        else:
-            title_col, btn_col = st.columns([5, 1])
-            with title_col:
-                st.subheader("카테고리 목록")
-            with btn_col:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("수정", use_container_width=True):
-                    st.session_state.category_edit_mode = True
+        with btn_col3:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("저장", use_container_width=True, key="cat_save"):
+                st.session_state._cat_save_clicked = True
 
-        if len(st.session_state.categories) == 0:
-            st.warning("등록된 카테고리가 없습니다")
-            st.form_submit_button("", use_container_width=True, help="")
-        elif len(filtered_categories) == 0:
-            st.warning("검색 결과가 없습니다")
-            st.form_submit_button("", use_container_width=True, help="")
-        else:
-            if cat_search:
-                st.info(f"검색 결과: {len(filtered_categories)}개")
+        with btn_col4:
+            st.write("")
+    else:
+        title_col, btn_col = st.columns([5, 1])
+        with title_col:
+            st.subheader("카테고리 목록")
+        with btn_col:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("수정", use_container_width=True, key="cat_edit"):
+                st.session_state.category_edit_mode = True
+                # 카테고리 목록 탭 인덱스 저장 (인덱스 0)
+                st.session_state.current_tab_index = 0
+                st.rerun()
+
+    if len(st.session_state.categories) == 0:
+        st.warning("등록된 카테고리가 없습니다")
+    elif len(filtered_categories) == 0:
+        st.warning("검색 결과가 없습니다")
+    else:
+        if cat_search:
+            st.info(f"검색 결과: {len(filtered_categories)}개")
+        
+        if not st.session_state.category_edit_mode:
+            # 읽기 모드: 표 형식으로 표시
+            categories_data = []
+            for idx, cat in enumerate(filtered_categories, start=1):
+                categories_data.append({
+                    "번호": str(idx),
+                    "코드번호": cat.get("code", "-"),
+                    "카테고리명": cat.get("name", "-")
+                })
             
-            if not st.session_state.category_edit_mode:
-                # 읽기 모드: 표 형식으로 표시
-                categories_data = []
-                for idx, cat in enumerate(filtered_categories, start=1):
-                    categories_data.append({
-                        "번호": str(idx),
-                        "코드번호": cat.get("code", "-"),
-                        "카테고리명": cat.get("name", "-")
-                    })
-                
-                if categories_data:
-                    df_categories = pd.DataFrame(categories_data)
-                    st.dataframe(
-                        df_categories,
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            "번호": st.column_config.TextColumn("번호", width="small"),
-                            "코드번호": st.column_config.TextColumn("코드번호", width="medium"),
-                            "카테고리명": st.column_config.TextColumn("카테고리명", width="large")
-                        }
-                    )
-            else:
-                # 수정 모드: 기존 방식 (편집 가능한 필드)
-                st.markdown(
-                    """
-                <div style="max-height: 400px; overflow-y: auto;">
-                """,
-                    unsafe_allow_html=True,
+            if categories_data:
+                df_categories = pd.DataFrame(categories_data)
+                st.dataframe(
+                    df_categories,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "번호": st.column_config.TextColumn("번호", width="small"),
+                        "코드번호": st.column_config.TextColumn("코드번호", width="small"),
+                        "카테고리명": st.column_config.TextColumn("카테고리명", width="small")
+                    }
                 )
-
-                for filtered_cat in filtered_categories:
-                    # 원본 인덱스 찾기 (code 기준, 없으면 스킵)
-                    original_idx = next(
-                        (
-                            i
-                            for i, c in enumerate(st.session_state.categories)
-                            if c.get("code") == filtered_cat.get("code")
-                        ),
-                        None,
-                    )
-                    if original_idx is None:
-                        continue
-
-                    row = st.session_state.categories[original_idx]
-                    cat_col1, cat_col2, cat_col3 = st.columns([2, 3, 1])
-                    with cat_col1:
-                        st.caption("코드번호")
-                        st.text_input(
-                            "코드번호",
-                            value=row["code"],
-                            key=f"cat_code_{original_idx}",
-                            disabled=not st.session_state.category_edit_mode,
-                            label_visibility="collapsed",
-                        )
-                    with cat_col2:
-                        st.caption("카테고리명")
-                        st.text_input(
-                            "카테고리명",
-                            value=row["name"],
-                            key=f"cat_name_{original_idx}",
-                            disabled=not st.session_state.category_edit_mode,
-                            label_visibility="collapsed",
-                        )
-                    with cat_col3:
-                        st.caption("\u00A0")
-                        st.markdown(
-                            "<div style='height: 37px'></div>", unsafe_allow_html=True
-                        )
-                        checked = st.checkbox("", key=f"cat_sel_{original_idx}")
-                        if checked:
-                            st.session_state.category_selected.add(original_idx)
-                        else:
-                            st.session_state.category_selected.discard(original_idx)
-
-                st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            # 수정 모드: 표 형식으로 편집 가능하게
+            categories_data = []
+            
+            for idx, cat in enumerate(filtered_categories, start=1):
+                # code 기준으로 원본 인덱스 찾기
+                original_idx = next(
+                    (
+                        i
+                        for i, c in enumerate(st.session_state.categories)
+                        if c.get("code") == cat.get("code")
+                    ),
+                    None,
+                )
+                if original_idx is None:
+                    continue
+                
+                # 체크박스 상태 확인
+                is_checked = original_idx in st.session_state.category_selected
+                
+                categories_data.append({
+                    "선택": is_checked,
+                    "번호": str(idx),
+                    "코드번호": cat.get("code", "-"),
+                    "카테고리명": cat.get("name", "-"),
+                    "_original_idx": original_idx  # 원본 인덱스 저장용 (표시 안 함)
+                })
+            
+            if categories_data:
+                df_categories = pd.DataFrame(categories_data)
+                
+                # 편집 가능한 표
+                edited_df = st.data_editor(
+                    df_categories,
+                    use_container_width=True,
+                    hide_index=True,
+                    key="category_data_editor",
+                    column_config={
+                        "선택": st.column_config.CheckboxColumn("선택", width="small"),
+                        "번호": st.column_config.TextColumn("번호", width="small", disabled=True),
+                        "코드번호": st.column_config.TextColumn("코드번호", width="small"),
+                        "카테고리명": st.column_config.TextColumn("카테고리명", width="small"),
+                        "_original_idx": st.column_config.NumberColumn("_original_idx", width="small", disabled=True)
+                    },
+                    num_rows="dynamic"
+                )
+                
+                # 체크박스 상태 업데이트
+                for _, row in edited_df.iterrows():
+                    original_idx = int(row["_original_idx"])
+                    if row["선택"]:
+                        st.session_state.category_selected.add(original_idx)
+                    else:
+                        st.session_state.category_selected.discard(original_idx)
+                
+                # 저장 버튼이 클릭되었을 때 처리
+                if st.session_state.get("_cat_save_clicked", False):
+                    st.session_state._cat_save_clicked = False  # 플래그 리셋
+                    has_error = False
+                    
+                    # st.data_editor의 최신 반환값 직접 사용 (편집된 내용 반영)
+                    for _, row in edited_df.iterrows():
+                        original_idx = int(row["_original_idx"])
+                        if 0 <= original_idx < len(st.session_state.categories):
+                            new_code = str(row["코드번호"]).strip()
+                            new_name = str(row["카테고리명"]).strip()
+                            
+                            # 코드번호 중복 체크
+                            if any(
+                                c["code"] == new_code and i != original_idx
+                                for i, c in enumerate(st.session_state.categories)
+                            ):
+                                st.error(f"'{new_code}'는 이미 존재하는 코드번호입니다.")
+                                has_error = True
+                            else:
+                                st.session_state.categories[original_idx] = {
+                                    "code": new_code,
+                                    "name": new_name,
+                                }
+                    
+                    if not has_error:
+                        st.session_state.category_edit_mode = False
+                        st.session_state.current_tab_index = 0
+                        st.success("저장되었습니다.")
+                        st.rerun()
 
 # -------------------------------
 # 품목 목록 탭
@@ -355,285 +410,238 @@ with product_tab:
             p for p in filtered_products if p.get("status") == status_search
         ]
 
-    with st.form("product_list_form"):
-        if st.session_state.product_edit_mode:
-            title_col, btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(
-                [5, 1, 1, 1, 1]
-            )
-            with title_col:
-                st.subheader("품목 목록")
-            with btn_col1:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("선택 삭제", use_container_width=True):
-                    if not st.session_state.product_selected:
-                        st.info("삭제할 항목을 선택하세요.")
-                    else:
-                        for i in sorted(
-                            st.session_state.product_selected, reverse=True
-                        ):
-                            if 0 <= i < len(st.session_state.products):
-                                st.session_state.products.pop(i)
-                        st.session_state.product_selected = set()
-                        st.success("선택한 항목을 삭제했습니다.")
-
-            with btn_col2:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("전체 삭제", use_container_width=True):
-                    st.session_state.products = []
+    # 버튼 영역 (form 밖)
+    if st.session_state.product_edit_mode:
+        title_col, btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(
+            [5, 1, 1, 1, 1]
+        )
+        with title_col:
+            st.subheader("품목 목록")
+        with btn_col1:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("선택 삭제", use_container_width=True, key="prod_select_delete"):
+                if not st.session_state.product_selected:
+                    st.info("삭제할 항목을 선택하세요.")
+                else:
+                    for i in sorted(
+                        st.session_state.product_selected, reverse=True
+                    ):
+                        if 0 <= i < len(st.session_state.products):
+                            st.session_state.products.pop(i)
                     st.session_state.product_selected = set()
-                    st.success("전체 항목을 삭제했습니다.")
+                    st.success("선택한 항목을 삭제했습니다.")
+                    st.rerun()
 
-            with btn_col3:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("저장", use_container_width=True):
-                    for idx, row in enumerate(st.session_state.products):
-                        new_code = (
-                            st.session_state.get(
-                                f"prod_code_{idx}", row["code"]
-                            ).strip()
-                        )
-                        new_name = (
-                            st.session_state.get(
-                                f"prod_name_{idx}", row["name"]
-                            ).strip()
-                        )
-                        new_unit = (
-                            st.session_state.get(
-                                f"prod_unit_{idx}", row["unit"]
-                            ).strip()
-                        )
-                        new_status = (
-                            st.session_state.get(
-                                f"prod_status_{idx}", row["status"]
-                            ).strip()
-                        )
-                        new_safety = int(
-                            st.session_state.get(
-                                f"prod_safety_{idx}", row.get("safety", 0)
-                            )
-                        )
+        with btn_col2:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("전체 삭제", use_container_width=True, key="prod_all_delete"):
+                st.session_state.products = []
+                st.session_state.product_selected = set()
+                st.success("전체 항목을 삭제했습니다.")
+                st.rerun()
 
-                        if any(
-                            p["code"] == new_code and i != idx
-                            for i, p in enumerate(st.session_state.products)
-                        ):
-                            st.error(f"'{new_code}'는 이미 존재하는 코드번호입니다.")
-                        else:
-                            st.session_state.products[idx] = {
-                                "code": new_code,
-                                "category": row["category"],
-                                "name": new_name,
-                                "unit": new_unit,
-                                "status": new_status,
-                                "safety": new_safety,
-                            }
-                    st.session_state.product_edit_mode = False
-                    st.success("저장되었습니다.")
+        with btn_col3:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("저장", use_container_width=True, key="prod_save"):
+                st.session_state._save_clicked = True
 
-            with btn_col4:
-                st.write("")
-        else:
-            title_col, btn_col = st.columns([5, 1])
-            with title_col:
-                st.subheader("품목 목록")
-            with btn_col:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("수정", use_container_width=True):
-                    st.session_state.product_edit_mode = True
+        with btn_col4:
+            st.write("")
+    else:
+        title_col, btn_col1, btn_col2 = st.columns([5, 1, 1])
+        with title_col:
+            st.subheader("품목 목록")
+        with btn_col1:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("수정", use_container_width=True, key="prod_edit"):
+                st.session_state.product_edit_mode = True
+                # 품목 목록 탭 인덱스 저장 (인덱스 1)
+                st.session_state.current_tab_index = 1
+                st.rerun()
+        with btn_col2:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("삭제", use_container_width=True, key="prod_delete"):
+                if not st.session_state.product_selected:
+                    st.info("삭제할 항목을 선택하세요.")
+                else:
+                    for i in sorted(
+                        st.session_state.product_selected, reverse=True
+                    ):
+                        if 0 <= i < len(st.session_state.products):
+                            st.session_state.products.pop(i)
+                    st.session_state.product_selected = set()
+                    st.success("선택한 항목을 삭제했습니다.")
+                    st.rerun()
 
-        # 디버깅: 세션 상태 확인
-        if len(st.session_state.products) == 0:
-            st.warning("등록된 품목이 없습니다")
-            st.info("💡 품목 등록 페이지에서 품목을 먼저 등록해주세요.")
-            st.form_submit_button("", use_container_width=True, help="")
-        elif len(filtered_products) == 0:
-            st.warning("검색 결과가 없습니다")
-            st.info(f"💡 전체 등록된 품목 수: {len(st.session_state.products)}개")
-            # 검색 조건 초기화 안내
-            reset_col1, reset_col2 = st.columns([1, 1])
-            with reset_col1:
-                if st.button(
-                    "검색 조건 초기화",
-                    key="reset_search",
-                    use_container_width=True,
-                ):
-                    st.session_state.product_search = ""
-                    st.session_state.unit_search = "전체"
-                    st.session_state.status_search = "전체"
-
-            with reset_col2:
-                st.form_submit_button("", use_container_width=True, help="")
-        else:
-            if (
-                product_search
-                or (unit_search and unit_search != "전체")
-                or (status_search and status_search != "전체")
+    # 디버깅: 세션 상태 확인
+    if len(st.session_state.products) == 0:
+        st.warning("등록된 품목이 없습니다")
+        st.info("💡 품목 등록 페이지에서 품목을 먼저 등록해주세요.")
+    elif len(filtered_products) == 0:
+        st.warning("검색 결과가 없습니다")
+        st.info(f"💡 전체 등록된 품목 수: {len(st.session_state.products)}개")
+        # 검색 조건 초기화 안내
+        reset_col1, reset_col2 = st.columns([1, 1])
+        with reset_col1:
+            if st.button(
+                "검색 조건 초기화",
+                key="reset_search",
+                use_container_width=True,
             ):
-                st.info(f"검색 결과: {len(filtered_products)}개")
+                st.session_state.product_search = ""
+                st.session_state.unit_search = "전체"
+                st.session_state.status_search = "전체"
+                st.rerun()
+        with reset_col2:
+            st.write("")
+    else:
+        if (
+            product_search
+            or (unit_search and unit_search != "전체")
+            or (status_search and status_search != "전체")
+        ):
+            st.info(f"검색 결과: {len(filtered_products)}개")
 
-            if not st.session_state.product_edit_mode:
-                # 읽기 모드: 표 형식으로 표시
-                products_data = []
-                for idx, pr in enumerate(filtered_products, start=1):
-                    products_data.append({
-                        "번호": str(idx),
-                        "코드번호": pr.get("code", "-"),
-                        "품목명": pr.get("name", "-"),
-                        "카테고리": pr.get("category", "-"),
-                        "단위": pr.get("unit", "-"),
-                        "상태": pr.get("status", "-"),
-                        "안전재고": str(pr.get("safety", 0))
-                    })
-                
-                if products_data:
-                    df_products = pd.DataFrame(products_data)
-                    st.dataframe(
-                        df_products,
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            "번호": st.column_config.TextColumn("번호", width="small"),
-                            "코드번호": st.column_config.TextColumn("코드번호", width="medium"),
-                            "품목명": st.column_config.TextColumn("품목명", width="large"),
-                            "카테고리": st.column_config.TextColumn("카테고리", width="medium"),
-                            "단위": st.column_config.TextColumn("단위", width="small"),
-                            "상태": st.column_config.TextColumn("상태", width="small"),
-                            "안전재고": st.column_config.TextColumn("안전재고", width="small")
-                        }
-                    )
-            else:
-                # 수정 모드: 기존 방식 (편집 가능한 필드)
-                st.markdown(
-                    """
-                <div style="max-height: 400px; overflow-y: auto;">
-                """,
-                    unsafe_allow_html=True,
+        if not st.session_state.product_edit_mode:
+            # 읽기 모드: 표 형식으로 표시
+            products_data = []
+            for idx, pr in enumerate(filtered_products, start=1):
+                products_data.append({
+                    "번호": str(idx),
+                    "코드번호": pr.get("code", "-"),
+                    "품목명": pr.get("name", "-"),
+                    "카테고리": pr.get("category", "-"),
+                    "단위": pr.get("unit", "-"),
+                    "상태": pr.get("status", "-"),
+                    "안전재고": str(pr.get("safety", 0))
+                })
+            
+            if products_data:
+                df_products = pd.DataFrame(products_data)
+                st.dataframe(
+                    df_products,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "번호": st.column_config.TextColumn("번호", width="small"),
+                        "코드번호": st.column_config.TextColumn("코드번호", width="small"),
+                        "품목명": st.column_config.TextColumn("품목명", width="medium"),
+                        "카테고리": st.column_config.TextColumn("카테고리", width="small"),
+                        "단위": st.column_config.TextColumn("단위", width="small"),
+                        "상태": st.column_config.TextColumn("상태", width="small"),
+                        "안전재고": st.column_config.TextColumn("안전재고", width="small")
+                    }
                 )
-
-                for filtered_idx, pr in enumerate(filtered_products):
-                    # code 기준으로 원본 인덱스 찾기
-                    original_idx = next(
-                        (
-                            i
-                            for i, p in enumerate(st.session_state.products)
-                            if p.get("code") == pr.get("code")
+        else:
+            # 수정 모드: 표 형식으로 편집 가능하게
+            # 편집 가능한 표 형식으로 표시
+            products_data = []
+            
+            for idx, pr in enumerate(filtered_products, start=1):
+                # code 기준으로 원본 인덱스 찾기
+                original_idx = next(
+                    (
+                        i
+                        for i, p in enumerate(st.session_state.products)
+                        if p.get("code") == pr.get("code")
+                    ),
+                    None,
+                )
+                if original_idx is None:
+                    continue
+                
+                # 체크박스 상태 확인
+                is_checked = original_idx in st.session_state.product_selected
+                
+                products_data.append({
+                    "선택": is_checked,
+                    "번호": str(idx),
+                    "코드번호": pr.get("code", "-"),
+                    "품목명": pr.get("name", "-"),
+                    "카테고리": pr.get("category", "-"),
+                    "단위": pr.get("unit", "-"),
+                    "상태": pr.get("status", "-"),
+                    "안전재고": int(pr.get("safety", 0)),
+                    "_original_idx": original_idx  # 원본 인덱스 저장용 (표시 안 함)
+                })
+            
+            if products_data:
+                df_products = pd.DataFrame(products_data)
+                
+                # 편집 가능한 표
+                edited_df = st.data_editor(
+                    df_products,
+                    use_container_width=True,
+                    hide_index=True,
+                    key="product_data_editor",
+                    column_config={
+                        "선택": st.column_config.CheckboxColumn("선택", width="small"),
+                        "번호": st.column_config.TextColumn("번호", width="small", disabled=True),
+                        "코드번호": st.column_config.TextColumn("코드번호", width="small"),
+                        "품목명": st.column_config.TextColumn("품목명", width="medium"),
+                        "카테고리": st.column_config.TextColumn("카테고리", width="small", disabled=True),
+                        "단위": st.column_config.SelectboxColumn(
+                            "단위",
+                            width="small",
+                            options=["병", "박스", "kg", "갯수", "기타"]
                         ),
-                        None,
-                    )
-                    if original_idx is None:
-                        continue
-
-                    # 카테고리 목록과 같은 카드 형태
-                    prod_col1, prod_col2, prod_col3, prod_col4, prod_col5, prod_col6, prod_col7 = st.columns(
-                        [1.5, 2.5, 1.2, 1.2, 1.2, 1.2, 1]
-                    )
-
-                    with prod_col1:
-                        st.caption("코드번호")
-                        st.text_input(
-                            "코드번호",
-                            value=pr["code"],
-                            key=f"prod_code_{original_idx}",
-                            disabled=not st.session_state.product_edit_mode,
-                            label_visibility="collapsed",
-                        )
-
-                    with prod_col2:
-                        st.caption("품목명")
-                        st.text_input(
-                            "품목명",
-                            value=pr["name"],
-                            key=f"prod_name_{original_idx}",
-                            disabled=not st.session_state.product_edit_mode,
-                            label_visibility="collapsed",
-                        )
-
-                    with prod_col3:
-                        st.caption("단위")
-                        if st.session_state.product_edit_mode:
-                            unit_options = ["병", "박스", "kg", "갯수", "기타"]
-                            current_unit_index = (
-                                unit_options.index(pr.get("unit", "병"))
-                                if pr.get("unit") in unit_options
-                                else 0
-                            )
-                            st.selectbox(
-                                "단위",
-                                options=unit_options,
-                                index=current_unit_index,
-                                key=f"prod_unit_{original_idx}",
-                                label_visibility="collapsed",
-                            )
-                        else:
-                            st.text_input(
-                                "단위",
-                                value=pr.get("unit", ""),
-                                key=f"prod_unit_{original_idx}",
-                                disabled=True,
-                                label_visibility="collapsed",
-                            )
-
-                    with prod_col4:
-                        st.caption("상태")
-                        if st.session_state.product_edit_mode:
-                            st.selectbox(
-                                "상태",
-                                options=["사용", "단종"],
-                                index=(0 if pr.get("status") == "사용" else 1),
-                                key=f"prod_status_{original_idx}",
-                                label_visibility="collapsed",
-                            )
-                        else:
-                            st.text_input(
-                                "상태",
-                                value=pr.get("status", ""),
-                                key=f"prod_status_{original_idx}",
-                                disabled=True,
-                                label_visibility="collapsed",
-                            )
-
-                    with prod_col5:
-                        st.caption("안전재고")
-                        if st.session_state.product_edit_mode:
-                            st.number_input(
-                                "안전재고",
-                                min_value=0,
-                                step=1,
-                                value=int(pr.get("safety", 0)),
-                                key=f"prod_safety_{original_idx}",
-                                label_visibility="collapsed",
-                            )
-                        else:
-                            st.text_input(
-                                "안전재고",
-                                value=str(pr.get("safety", 0)),
-                                key=f"prod_safety_{original_idx}",
-                                disabled=True,
-                                label_visibility="collapsed",
-                            )
-
-                    with prod_col6:
-                        st.caption("카테고리")
-                        st.text_input(
-                            "카테고리",
-                            value=pr.get("category", ""),
-                            key=f"prod_category_{original_idx}",
-                            disabled=True,
-                            label_visibility="collapsed",
-                        )
-
-                    with prod_col7:
-                        st.caption("\u00A0")
-                        st.markdown(
-                            "<div style='height: 37px'></div>", unsafe_allow_html=True
-                        )
-                        checked = st.checkbox("", key=f"prod_sel_{original_idx}")
-                        if checked:
-                            st.session_state.product_selected.add(original_idx)
-                        else:
-                            st.session_state.product_selected.discard(original_idx)
-
-                st.markdown("</div>", unsafe_allow_html=True)
+                        "상태": st.column_config.SelectboxColumn(
+                            "상태",
+                            width="small",
+                            options=["사용", "단종"]
+                        ),
+                        "안전재고": st.column_config.NumberColumn("안전재고", width="small", min_value=0),
+                        "_original_idx": st.column_config.NumberColumn("_original_idx", width="small", disabled=True)
+                    },
+                    num_rows="dynamic"
+                )
+                
+                # 체크박스 상태 업데이트
+                for _, row in edited_df.iterrows():
+                    original_idx = int(row["_original_idx"])
+                    if row["선택"]:
+                        st.session_state.product_selected.add(original_idx)
+                    else:
+                        st.session_state.product_selected.discard(original_idx)
+                
+                # 저장 버튼이 클릭되었을 때 처리
+                if st.session_state.get("_save_clicked", False):
+                    st.session_state._save_clicked = False  # 플래그 리셋
+                    has_error = False
+                    
+                    # st.data_editor의 최신 반환값 직접 사용 (편집된 내용 반영)
+                    for _, row in edited_df.iterrows():
+                        original_idx = int(row["_original_idx"])
+                        if 0 <= original_idx < len(st.session_state.products):
+                            new_code = str(row["코드번호"]).strip()
+                            new_name = str(row["품목명"]).strip()
+                            new_unit = str(row["단위"]).strip()
+                            new_status = str(row["상태"]).strip()
+                            new_safety = int(row["안전재고"]) if pd.notna(row["안전재고"]) else 0
+                            
+                            # 코드번호 중복 체크
+                            if any(
+                                p["code"] == new_code and i != original_idx
+                                for i, p in enumerate(st.session_state.products)
+                            ):
+                                st.error(f"'{new_code}'는 이미 존재하는 코드번호입니다.")
+                                has_error = True
+                            else:
+                                st.session_state.products[original_idx] = {
+                                    "code": new_code,
+                                    "category": st.session_state.products[original_idx]["category"],
+                                    "name": new_name,
+                                    "unit": new_unit,
+                                    "status": new_status,
+                                    "safety": new_safety,
+                                }
+                    
+                    if not has_error:
+                        st.session_state.product_edit_mode = False
+                        st.session_state._edited_products_data = None
+                        st.session_state.current_tab_index = 1
+                        st.success("저장되었습니다.")
+                        st.rerun()
 
 # -------------------------------
 # 거래처 목록 탭
@@ -667,215 +675,200 @@ with partner_tab:
             or search_term in p.get("address", "").lower()
         ]
 
-    with st.form("partner_list_form"):
-        if st.session_state.partner_edit_mode:
-            title_col, btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(
-                [5, 1, 1, 1, 1]
-            )
-            with title_col:
-                st.subheader("거래처 목록")
-            with btn_col1:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("선택 삭제", use_container_width=True):
-                    if not st.session_state.partner_selected:
-                        st.info("삭제할 항목을 선택하세요.")
-                    else:
-                        for i in sorted(
-                            st.session_state.partner_selected, reverse=True
-                        ):
-                            if 0 <= i < len(st.session_state.partners):
-                                st.session_state.partners.pop(i)
-                        st.session_state.partner_selected = set()
-                        st.success("선택한 항목을 삭제했습니다.")
-
-            with btn_col2:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("전체 삭제", use_container_width=True):
-                    st.session_state.partners = []
+    # 버튼 영역 (form 밖)
+    if st.session_state.partner_edit_mode:
+        title_col, btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(
+            [5, 1, 1, 1, 1]
+        )
+        with title_col:
+            st.subheader("거래처 목록")
+        with btn_col1:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("선택 삭제", use_container_width=True, key="partner_select_delete"):
+                if not st.session_state.partner_selected:
+                    st.info("삭제할 항목을 선택하세요.")
+                else:
+                    for i in sorted(
+                        st.session_state.partner_selected, reverse=True
+                    ):
+                        if 0 <= i < len(st.session_state.partners):
+                            st.session_state.partners.pop(i)
                     st.session_state.partner_selected = set()
-                    st.success("전체 항목을 삭제했습니다.")
+                    st.success("선택한 항목을 삭제했습니다.")
+                    st.rerun()
 
-            with btn_col3:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("저장", use_container_width=True):
-                    for idx, row in enumerate(st.session_state.partners):
-                        new_code = (
-                            st.session_state.get(
-                                f"partner_code_{idx}", row["code"]
-                            ).strip()
-                        )
-                        new_name = (
-                            st.session_state.get(
-                                f"partner_name_{idx}", row["name"]
-                            ).strip()
-                        )
-                        new_bus = (
-                            st.session_state.get(
-                                f"partner_bus_{idx}", row["business_number"]
-                            ).strip()
-                        )
-                        new_rep = (
-                            st.session_state.get(
-                                f"partner_rep_{idx}", row["representative"]
-                            ).strip()
-                        )
-                        new_addr = (
-                            st.session_state.get(
-                                f"partner_addr_{idx}", row["address"]
-                            ).strip()
-                        )
-                        if any(
-                            p["code"] == new_code and i != idx
-                            for i, p in enumerate(st.session_state.partners)
-                        ):
-                            st.error(f"'{new_code}'는 이미 존재하는 거래처 코드입니다.")
-                        elif new_bus and not re.match(r"^[0-9\-]+$", new_bus):
-                            st.error(
-                                f"'{new_bus}'는 올바른 사업자번호 형식이 아닙니다. 숫자와 하이픈(-)만 입력 가능합니다."
-                            )
-                        elif new_rep and not re.match(
-                            r"^[가-힣a-zA-Z\s]+$", new_rep
-                        ):
-                            st.error(
-                                f"'{new_rep}'는 올바른 이름 형식이 아닙니다. 한글과 영문만 입력 가능합니다."
-                            )
-                        else:
-                            st.session_state.partners[idx] = {
-                                "code": new_code,
-                                "name": new_name,
-                                "business_number": new_bus,
-                                "representative": new_rep,
-                                "address": new_addr,
-                            }
-                    st.session_state.partner_edit_mode = False
-                    st.success("저장되었습니다.")
+        with btn_col2:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("전체 삭제", use_container_width=True, key="partner_all_delete"):
+                st.session_state.partners = []
+                st.session_state.partner_selected = set()
+                st.success("전체 항목을 삭제했습니다.")
+                st.rerun()
 
-            with btn_col4:
-                st.write("")
-        else:
-            title_col, btn_col = st.columns([5, 1])
-            with title_col:
-                st.subheader("거래처 목록")
-            with btn_col:
-                st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
-                if st.form_submit_button("수정", use_container_width=True):
-                    st.session_state.partner_edit_mode = True
+        with btn_col3:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("저장", use_container_width=True, key="partner_save"):
+                st.session_state._partner_save_clicked = True
 
-        if len(st.session_state.partners) == 0:
-            st.warning("등록된 거래처가 없습니다")
-            st.form_submit_button("", use_container_width=True, help="")
-        elif len(filtered_partners) == 0:
-            st.warning("검색 결과가 없습니다")
-            st.form_submit_button("", use_container_width=True, help="")
-        else:
-            if partner_search:
-                st.info(f"검색 결과: {len(filtered_partners)}개")
+        with btn_col4:
+            st.write("")
+    else:
+        title_col, btn_col = st.columns([5, 1])
+        with title_col:
+            st.subheader("거래처 목록")
+        with btn_col:
+            st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
+            if st.button("수정", use_container_width=True, key="partner_edit"):
+                # 거래처 목록 탭 인덱스 저장 (인덱스 2) - 먼저 설정
+                st.session_state.current_tab_index = 2
+                st.session_state.partner_edit_mode = True
+                st.rerun()
+
+    if len(st.session_state.partners) == 0:
+        st.warning("등록된 거래처가 없습니다")
+    elif len(filtered_partners) == 0:
+        st.warning("검색 결과가 없습니다")
+    else:
+        if partner_search:
+            st.info(f"검색 결과: {len(filtered_partners)}개")
+        
+        if not st.session_state.partner_edit_mode:
+            # 읽기 모드: 표 형식으로 표시
+            partners_data = []
+            for idx, partner in enumerate(filtered_partners, start=1):
+                partners_data.append({
+                    "번호": str(idx),
+                    "거래처 코드": partner.get("code", "-"),
+                    "거래처명": partner.get("name", "-"),
+                    "사업자번호": partner.get("business_number", "-"),
+                    "대표자": partner.get("representative", "-"),
+                    "주소": partner.get("address", "-")
+                })
             
-            if not st.session_state.partner_edit_mode:
-                # 읽기 모드: 표 형식으로 표시
-                partners_data = []
-                for idx, partner in enumerate(filtered_partners, start=1):
-                    partners_data.append({
-                        "번호": str(idx),
-                        "거래처 코드": partner.get("code", "-"),
-                        "거래처명": partner.get("name", "-"),
-                        "사업자번호": partner.get("business_number", "-"),
-                        "대표자": partner.get("representative", "-"),
-                        "주소": partner.get("address", "-")
-                    })
+            if partners_data:
+                df_partners = pd.DataFrame(partners_data)
+                st.dataframe(
+                    df_partners,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "번호": st.column_config.TextColumn("번호", width="small"),
+                        "거래처 코드": st.column_config.TextColumn("거래처 코드", width="small"),
+                        "거래처명": st.column_config.TextColumn("거래처명", width="medium"),
+                        "사업자번호": st.column_config.TextColumn("사업자번호", width="medium"),
+                        "대표자": st.column_config.TextColumn("대표자", width="small"),
+                        "주소": st.column_config.TextColumn("주소", width="medium")
+                    }
+                )
+        else:
+            # 수정 모드: 표 형식으로 편집 가능하게
+            partners_data = []
+            
+            for idx, partner in enumerate(filtered_partners, start=1):
+                # code 기준으로 원본 인덱스 찾기
+                original_idx = next(
+                    (
+                        i
+                        for i, p in enumerate(st.session_state.partners)
+                        if p.get("code") == partner.get("code")
+                    ),
+                    None,
+                )
+                if original_idx is None:
+                    continue
                 
-                if partners_data:
-                    df_partners = pd.DataFrame(partners_data)
-                    st.dataframe(
-                        df_partners,
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            "번호": st.column_config.TextColumn("번호", width="small"),
-                            "거래처 코드": st.column_config.TextColumn("거래처 코드", width="medium"),
-                            "거래처명": st.column_config.TextColumn("거래처명", width="medium"),
-                            "사업자번호": st.column_config.TextColumn("사업자번호", width="medium"),
-                            "대표자": st.column_config.TextColumn("대표자", width="small"),
-                            "주소": st.column_config.TextColumn("주소", width="large")
-                        }
-                    )
-            else:
-                # 수정 모드: 기존 방식 (편집 가능한 필드)
-                h1, h2, h3, h4, h5, h6 = st.columns([1.5, 2, 2, 2, 3, 0.5])
-                with h1:
-                    st.write("**거래처 코드**")
-                with h2:
-                    st.write("**거래처명**")
-                with h3:
-                    st.write("**사업자번호**")
-                with h4:
-                    st.write("**대표자**")
-                with h5:
-                    st.write("**주소**")
-                with h6:
-                    st.write("**선택**")
-
-                for filtered_partner in filtered_partners:
-                    # 원본 인덱스 찾기 (code 기준)
-                    original_idx = next(
-                        (
-                            i
-                            for i, p in enumerate(st.session_state.partners)
-                            if p.get("code") == filtered_partner.get("code")
-                        ),
-                        None,
-                    )
-                    if original_idx is None:
-                        continue
-
-                    partner = st.session_state.partners[original_idx]
-                    c1, c2, c3, c4, c5, c6 = st.columns([1.5, 2, 2, 2, 3, 0.5])
-                    with c1:
-                        st.text_input(
-                            "거래처 코드",
-                            value=partner["code"],
-                            key=f"partner_code_{original_idx}",
-                            disabled=not st.session_state.partner_edit_mode,
-                            label_visibility="collapsed",
-                        )
-                    with c2:
-                        st.text_input(
-                            "거래처명",
-                            value=partner["name"],
-                            key=f"partner_name_{original_idx}",
-                            disabled=not st.session_state.partner_edit_mode,
-                            label_visibility="collapsed",
-                        )
-                    with c3:
-                        st.text_input(
-                            "사업자번호",
-                            value=partner.get("business_number", ""),
-                            key=f"partner_bus_{original_idx}",
-                            disabled=not st.session_state.partner_edit_mode,
-                            label_visibility="collapsed",
-                        )
-                    with c4:
-                        st.text_input(
-                            "대표자",
-                            value=partner.get("representative", ""),
-                            key=f"partner_rep_{original_idx}",
-                            disabled=not st.session_state.partner_edit_mode,
-                            label_visibility="collapsed",
-                        )
-                    with c5:
-                        st.text_input(
-                            "주소",
-                            value=partner.get("address", ""),
-                            key=f"partner_addr_{original_idx}",
-                            disabled=not st.session_state.partner_edit_mode,
-                            label_visibility="collapsed",
-                        )
-                    with c6:
-                        checked = st.checkbox("", key=f"partner_sel_{original_idx}")
-                        if checked:
-                            st.session_state.partner_selected.add(original_idx)
-                        else:
-                            st.session_state.partner_selected.discard(original_idx)
+                # 체크박스 상태 확인
+                is_checked = original_idx in st.session_state.partner_selected
+                
+                partners_data.append({
+                    "선택": is_checked,
+                    "번호": str(idx),
+                    "거래처 코드": partner.get("code", "-"),
+                    "거래처명": partner.get("name", "-"),
+                    "사업자번호": partner.get("business_number", "-"),
+                    "대표자": partner.get("representative", "-"),
+                    "주소": partner.get("address", "-"),
+                    "_original_idx": original_idx  # 원본 인덱스 저장용 (표시 안 함)
+                })
+            
+            if partners_data:
+                df_partners = pd.DataFrame(partners_data)
+                
+                # 편집 가능한 표
+                edited_df = st.data_editor(
+                    df_partners,
+                    use_container_width=True,
+                    hide_index=True,
+                    key="partner_data_editor",
+                    column_config={
+                        "선택": st.column_config.CheckboxColumn("선택", width="small"),
+                        "번호": st.column_config.TextColumn("번호", width="small", disabled=True),
+                        "거래처 코드": st.column_config.TextColumn("거래처 코드", width="small"),
+                        "거래처명": st.column_config.TextColumn("거래처명", width="medium"),
+                        "사업자번호": st.column_config.TextColumn("사업자번호", width="medium"),
+                        "대표자": st.column_config.TextColumn("대표자", width="small"),
+                        "주소": st.column_config.TextColumn("주소", width="medium"),
+                        "_original_idx": st.column_config.NumberColumn("_original_idx", width="small", disabled=True)
+                    },
+                    num_rows="dynamic"
+                )
+                
+                # 체크박스 상태 업데이트
+                for _, row in edited_df.iterrows():
+                    original_idx = int(row["_original_idx"])
+                    if row["선택"]:
+                        st.session_state.partner_selected.add(original_idx)
+                    else:
+                        st.session_state.partner_selected.discard(original_idx)
+                
+                # 저장 버튼이 클릭되었을 때 처리
+                if st.session_state.get("_partner_save_clicked", False):
+                    st.session_state._partner_save_clicked = False  # 플래그 리셋
+                    has_error = False
+                    
+                    # st.data_editor의 최신 반환값 직접 사용 (편집된 내용 반영)
+                    for _, row in edited_df.iterrows():
+                        original_idx = int(row["_original_idx"])
+                        if 0 <= original_idx < len(st.session_state.partners):
+                            new_code = str(row["거래처 코드"]).strip()
+                            new_name = str(row["거래처명"]).strip()
+                            new_bus = str(row["사업자번호"]).strip() if pd.notna(row["사업자번호"]) else ""
+                            new_rep = str(row["대표자"]).strip() if pd.notna(row["대표자"]) else ""
+                            new_addr = str(row["주소"]).strip() if pd.notna(row["주소"]) else ""
+                            
+                            # 코드번호 중복 체크
+                            if any(
+                                p["code"] == new_code and i != original_idx
+                                for i, p in enumerate(st.session_state.partners)
+                            ):
+                                st.error(f"'{new_code}'는 이미 존재하는 거래처 코드입니다.")
+                                has_error = True
+                            elif new_bus and not re.match(r"^[0-9\-]+$", new_bus):
+                                st.error(
+                                    f"'{new_bus}'는 올바른 사업자번호 형식이 아닙니다. 숫자와 하이픈(-)만 입력 가능합니다."
+                                )
+                                has_error = True
+                            elif new_rep and not re.match(
+                                r"^[가-힣a-zA-Z\s]+$", new_rep
+                            ):
+                                st.error(
+                                    f"'{new_rep}'는 올바른 이름 형식이 아닙니다. 한글과 영문만 입력 가능합니다."
+                                )
+                                has_error = True
+                            else:
+                                st.session_state.partners[original_idx] = {
+                                    "code": new_code,
+                                    "name": new_name,
+                                    "business_number": new_bus,
+                                    "representative": new_rep,
+                                    "address": new_addr,
+                                }
+                    
+                    if not has_error:
+                        st.session_state.partner_edit_mode = False
+                        st.session_state.current_tab_index = 2
+                        st.success("저장되었습니다.")
+                        st.rerun()
 
 # -------------------------------
 # 관리자 목록 탭
@@ -987,47 +980,61 @@ with admin_tab:
             with btn_col3:
                 st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
                 if st.form_submit_button("저장", use_container_width=True):
-                    for idx, row in enumerate(st.session_state.admins):
+                    has_error = False
+                    for filtered_admin in filtered_admins:
+                        # 원본 인덱스 찾기 (emp_no 기준)
+                        original_idx = next(
+                            (
+                                i
+                                for i, a in enumerate(st.session_state.admins)
+                                if a.get("emp_no") == filtered_admin.get("emp_no")
+                            ),
+                            None,
+                        )
+                        if original_idx is None:
+                            continue
+                        
                         new_emp_no = (
                             st.session_state.get(
-                                f"admin_emp_no_{idx}", row["emp_no"]
+                                f"admin_emp_no_{original_idx}", filtered_admin["emp_no"]
                             ).strip()
                         )
                         new_name = (
                             st.session_state.get(
-                                f"admin_name_{idx}", row["name"]
+                                f"admin_name_{original_idx}", filtered_admin["name"]
                             ).strip()
                         )
                         new_gender = st.session_state.get(
-                            f"admin_gender_{idx}", row["gender"]
+                            f"admin_gender_{original_idx}", filtered_admin["gender"]
                         )
                         new_email = (
                             st.session_state.get(
-                                f"admin_email_{idx}", row["email"]
+                                f"admin_email_{original_idx}", filtered_admin.get("email", "")
                             ).strip()
                         )
                         new_phone = (
                             st.session_state.get(
-                                f"admin_phone_{idx}", row["phone"]
+                                f"admin_phone_{original_idx}", filtered_admin.get("phone", "")
                             ).strip()
                         )
                         new_position = st.session_state.get(
-                            f"admin_position_{idx}", row["position"]
+                            f"admin_position_{original_idx}", filtered_admin["position"]
                         )
                         new_mgmt_type = st.session_state.get(
-                            f"admin_mgmt_type_{idx}", row["management_type"]
+                            f"admin_mgmt_type_{original_idx}", filtered_admin["management_type"]
                         )
                         new_status = st.session_state.get(
-                            f"admin_status_{idx}", row["status"]
+                            f"admin_status_{original_idx}", filtered_admin["status"]
                         )
 
                         if any(
-                            a["emp_no"] == new_emp_no and i != idx
+                            a["emp_no"] == new_emp_no and i != original_idx
                             for i, a in enumerate(st.session_state.admins)
                         ):
                             st.error(f"'{new_emp_no}'는 이미 존재하는 사번번호입니다.")
+                            has_error = True
                         else:
-                            st.session_state.admins[idx] = {
+                            st.session_state.admins[original_idx] = {
                                 "emp_no": new_emp_no,
                                 "name": new_name,
                                 "gender": new_gender,
@@ -1037,8 +1044,11 @@ with admin_tab:
                                 "management_type": new_mgmt_type,
                                 "status": new_status,
                             }
-                    st.session_state.admin_edit_mode = False
-                    st.success("저장되었습니다.")
+                    if not has_error:
+                        st.session_state.admin_edit_mode = False
+                        st.session_state.current_tab_index = 3
+                        st.success("저장되었습니다.")
+                        st.rerun()
 
             with btn_col4:
                 st.write("")
@@ -1050,6 +1060,9 @@ with admin_tab:
                 st.markdown("<div style='height: 10px'></div>", unsafe_allow_html=True)
                 if st.form_submit_button("수정", use_container_width=True):
                     st.session_state.admin_edit_mode = True
+                    # 관리자 목록 탭 인덱스 저장 (인덱스 3)
+                    st.session_state.current_tab_index = 3
+                    st.rerun()
 
         if len(st.session_state.admins) == 0:
             st.warning("등록된 관리자가 없습니다")
