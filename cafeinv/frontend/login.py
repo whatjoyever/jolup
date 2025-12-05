@@ -28,9 +28,10 @@ if "sample_initialized" not in st.session_state:
 # 샘플 데이터 세팅 함수
 # ------------------------------------------------
 def seed_sample_data():
-    """처음 로그인할 때 한 번만 샘플 데이터 주입"""
-    if st.session_state.sample_initialized:
-        return
+    """처음 로그인할 때 샘플 데이터 주입 (개발 단계: 매번 새로 세팅)"""
+    # 방법 1: 개발 중에는 sample_initialized 체크를 잠깐 끔
+    # if st.session_state.sample_initialized:
+    #     return
 
     # 1) 카테고리 (원재료 카테고리)
     if "categories" not in st.session_state:
@@ -229,7 +230,159 @@ def seed_sample_data():
     st.session_state.last_registered_partner = sample_partners[0]
     st.session_state.last_registered_admin = sample_admins[0]
 
-        # 5) 입고/출고 샘플 (재고/입고 관련 페이지에서 사용)
+    # ------------------------------------------------
+    # 5) 발주 / 입고 / 출고 샘플
+    # ------------------------------------------------
+    # 5-1) 발주 샘플 (order_list 화면용) - 단위 kg / L / 개
+    if "orders" not in st.session_state:
+        st.session_state.orders = []
+
+    sample_orders = [
+        {
+            "order_no": "PO-20251120-001",
+            "order_date": "2025-11-20",
+            "partner_code": "pt_001",
+            "partner_name": "서울커피유통",
+            "product_code": "pr_001",
+            "product_name": "에스프레소 원두",
+            "order_qty": 12.0,   # 12 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-20",
+            "status": "입고완료",
+            "staff": "김카페",
+            "note": "초기 원두 발주",
+        },
+        {
+            "order_no": "PO-20251120-002",
+            "order_date": "2025-11-20",
+            "partner_code": "pt_001",
+            "partner_name": "서울커피유통",
+            "product_code": "pr_002",
+            "product_name": "디카페인 원두",
+            "order_qty": 3.0,    # 3 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-20",
+            "status": "입고완료",
+            "staff": "김카페",
+            "note": "초기 디카페인 발주",
+        },
+        {
+            "order_no": "PO-20251122-001",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_002",
+            "partner_name": "스위트시럽상회",
+            "product_code": "pr_003",
+            "product_name": "카라멜 시럽",
+            "order_qty": 2.0,    # 2 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 카라멜 시럽 발주",
+        },
+        {
+            "order_no": "PO-20251122-002",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_002",
+            "partner_name": "스위트시럽상회",
+            "product_code": "pr_004",
+            "product_name": "바닐라 시럽",
+            "order_qty": 2.0,    # 2 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 바닐라 시럽 발주",
+        },
+        {
+            "order_no": "PO-20251122-003",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_002",
+            "partner_name": "스위트시럽상회",
+            "product_code": "pr_005",
+            "product_name": "헤이즐넛 시럽",
+            "order_qty": 2.0,    # 2 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 헤이즐넛 시럽 발주",
+        },
+        {
+            "order_no": "PO-20251121-001",
+            "order_date": "2025-11-21",
+            "partner_code": "pt_003",
+            "partner_name": "해밀유제품",
+            "product_code": "pr_006",
+            "product_name": "우유",
+            "order_qty": 30.0,   # 30 L
+            "order_unit": "L",
+            "expected_date": "2025-11-21",
+            "status": "입고완료",
+            "staff": "이바리스타",
+            "note": "초기 우유 발주",
+        },
+        {
+            "order_no": "PO-20251121-002",
+            "order_date": "2025-11-21",
+            "partner_code": "pt_003",
+            "partner_name": "해밀유제품",
+            "product_code": "pr_007",
+            "product_name": "두유",
+            "order_qty": 3.0,    # 3 L
+            "order_unit": "L",
+            "expected_date": "2025-11-21",
+            "status": "입고완료",
+            "staff": "이바리스타",
+            "note": "초기 두유 발주",
+        },
+        {
+            "order_no": "PO-20251122-004",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_002",
+            "partner_name": "스위트시럽상회",
+            "product_code": "pr_008",
+            "product_name": "휘핑크림",
+            "order_qty": 1.2,    # 1.2 kg (1200 g)
+            "order_unit": "kg",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 휘핑크림 발주",
+        },
+        {
+            "order_no": "PO-20251122-005",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_002",
+            "partner_name": "스위트시럽상회",
+            "product_code": "pr_009",
+            "product_name": "초코 파우더",
+            "order_qty": 1.0,    # 1 kg
+            "order_unit": "kg",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 초코 파우더 발주",
+        },
+        {
+            "order_no": "PO-20251122-006",
+            "order_date": "2025-11-22",
+            "partner_code": "pt_004",
+            "partner_name": "브레드팩토리",
+            "product_code": "pr_010",
+            "product_name": "버터 크루아상",
+            "order_qty": 10.0,   # 10개
+            "order_unit": "개",
+            "expected_date": "2025-11-22",
+            "status": "입고완료",
+            "staff": "장희원",
+            "note": "초기 디저트 발주",
+        },
+    ]
+    st.session_state.orders = sample_orders
+    st.session_state.last_order = sample_orders[-1]
+
+    # 5-2) 입고/출고 샘플 (네가 처음 준 버전 그대로 유지)
     if "received_items" not in st.session_state:
         st.session_state.received_items = []
     if "releases" not in st.session_state:
@@ -474,8 +627,6 @@ def seed_sample_data():
 
     st.session_state.last_received_item = sample_received_list[-1]
     st.session_state.receive_completed = True
-
-
 
     # 6) 메뉴 카테고리 (레시피용)
     if "menu_categories" not in st.session_state:
@@ -749,7 +900,7 @@ def seed_sample_data():
 
     st.session_state.recipes = sample_recipes
 
-    # 한 번만 실행되도록 플래그
+    # 한 번만 실행되도록 플래그(지금은 체크 안 쓰지만 남겨둠)
     st.session_state.sample_initialized = True
 
 
@@ -757,7 +908,6 @@ def seed_sample_data():
 # 이미 로그인된 상태면 바로 메인으로 보내기
 # ------------------------------------------------
 if st.session_state.logged_in:
-    # 혹시 샘플이 안 들어가 있었으면 여기서 한 번 더 보장
     seed_sample_data()
     st.switch_page(DEST_MAIN)
     st.stop()
@@ -806,7 +956,6 @@ with st.container():
                 </span>
             </div>
             <div class="login-title">Stock Mate 로그인</div>
-            
         </div>
         """,
         unsafe_allow_html=True,
@@ -823,11 +972,11 @@ if login_clicked:
     if not uid or not pw:
         st.warning("아이디와 비밀번호를 모두 입력하세요.")
     else:
-        # 여기서는 단순히 '값이 있으면 로그인 성공'으로 처리 (과제 시연용)
+        # 단순 시연용 로그인 처리
         st.session_state.user = uid
         st.session_state.logged_in = True
 
-        # ✅ 로그인 성공 시 샘플 데이터 세팅 (자동)
+        # 로그인 성공 시 샘플 데이터 세팅
         seed_sample_data()
 
         st.success("로그인 성공! 메인 화면으로 이동합니다.")

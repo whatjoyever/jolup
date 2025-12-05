@@ -599,13 +599,49 @@ else:
                 order_qty, actual_qty, raw_unit
             )
 
+            # 발주일 추출 (order_date 또는 date 필드에서, 없으면 발주 목록에서 찾기)
+            order_date = item.get("order_date", "") or item.get("date", "")
+            if not order_date:
+                product_code = item.get("product_code", "")
+                product_name = item.get("product_name", "")
+                # 발주 목록에서 해당 품목의 발주일 찾기
+                for order in st.session_state.get("receives", []):
+                    if (order.get("product_code") == product_code and 
+                        order.get("product_name") == product_name):
+                        order_date = order.get("date", "")
+                        break
+            
+            if order_date:
+                if isinstance(order_date, date):
+                    order_date_str = str(order_date)
+                elif isinstance(order_date, str):
+                    order_date_str = order_date[:10] if len(order_date) >= 10 else order_date
+                else:
+                    order_date_str = "-"
+            else:
+                order_date_str = "-"
+            
+            # 입고일 추출
+            receive_date = item.get("receive_date", "")
+            if receive_date:
+                if isinstance(receive_date, date):
+                    receive_date_str = str(receive_date)
+                elif isinstance(receive_date, str):
+                    receive_date_str = receive_date[:10] if len(receive_date) >= 10 else receive_date
+                else:
+                    receive_date_str = "-"
+            else:
+                receive_date_str = "-"
+
             table_rows.append(
                 {
                     "품목코드": item.get("product_code", "-"),
                     "품목명": item.get("product_name", "-"),
                     "카테고리": item.get("category", "-"),
                     "단위": disp_unit,
+                    "발주일": order_date_str,
                     "발주 수량": disp_order_qty,
+                    "입고일": receive_date_str,
                     "입고 수량": disp_actual_qty,
                     "발주 단가(원)": item.get("order_price", 0),
                     "입고 단가(원)": item.get("actual_price", 0),
@@ -617,8 +653,32 @@ else:
 
         df_receive = pd.DataFrame(table_rows)
 
+        # ✅ 발주일이 비어 있으면 입고일로 자동 채우기
+        if not df_receive.empty and "발주일" in df_receive.columns and "입고일" in df_receive.columns:
+            df_receive["발주일"] = df_receive["발주일"].replace(["", "-", None], pd.NA)
+            df_receive["발주일"] = df_receive["발주일"].fillna(df_receive["입고일"])
+
         st.markdown("### 📊 입고 내역 (표 보기)")
-        st.dataframe(df_receive, use_container_width=True, hide_index=True)
+        st.dataframe(
+            df_receive,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "품목코드": st.column_config.TextColumn("품목코드", width="small"),
+                "품목명": st.column_config.TextColumn("품목명", width="medium"),
+                "카테고리": st.column_config.TextColumn("카테고리", width="small"),
+                "단위": st.column_config.TextColumn("단위", width="small"),
+                "발주일": st.column_config.TextColumn("발주일", width="small"),
+                "발주 수량": st.column_config.TextColumn("발주 수량", width="small"),
+                "입고일": st.column_config.TextColumn("입고일", width="small"),
+                "입고 수량": st.column_config.TextColumn("입고 수량", width="small"),
+                "발주 단가(원)": st.column_config.TextColumn("발주 단가(원)", width="small"),
+                "입고 단가(원)": st.column_config.TextColumn("입고 단가(원)", width="small"),
+                "유통기한": st.column_config.TextColumn("유통기한", width="small"),
+                "담당자": st.column_config.TextColumn("담당자", width="small"),
+                "거래처": st.column_config.TextColumn("거래처", width="medium"),
+            }
+        )
 
 
 # ========================================================================
@@ -628,22 +688,60 @@ st.markdown("---")
 st.subheader("거래명세서 내역 (입출고 통합)")
 
 all_transactions = []
+# 입고 등록을 완료한 품목만 거래명세서에 포함 (실제 입고 수량이 0보다 크고 입고일이 있는 항목만)
 for item in st.session_state.received_items:
-    all_transactions.append(
-        {
-            **item,
-            "transaction_type": "매입(입고)",
-            "transaction_date": item.get("receive_date", ""),
-            "qty": item.get("actual_qty", 0),
-            "price": item.get("actual_price", 0),
-        }
-    )
+    # 실제 입고 수량이 있고 입고일이 있는 항목만 추가
+    if item.get("actual_qty", 0) > 0 and item.get("receive_date"):
+        # 발주일 가져오기 (없으면 발주 목록에서 찾기)
+        order_date = item.get("order_date", "") or item.get("date", "")
+        if not order_date:
+            product_code = item.get("product_code", "")
+            product_name = item.get("product_name", "")
+            # 발주 목록에서 해당 품목의 발주일 찾기
+            for order in st.session_state.get("receives", []):
+                if (order.get("product_code") == product_code and 
+                    order.get("product_name") == product_name):
+                    order_date = order.get("date", "")
+                    break
+        
+        # 발주일 형식 정리
+        if order_date:
+            if isinstance(order_date, date):
+                order_date_str = str(order_date)
+            elif isinstance(order_date, str):
+                order_date_str = order_date[:10] if len(order_date) >= 10 else order_date
+            else:
+                order_date_str = str(order_date)
+        else:
+            order_date_str = ""
+        
+        all_transactions.append(
+            {
+                **item,
+                "transaction_type": "매입(입고)",
+                "transaction_date": item.get("receive_date", ""),
+                "order_date": order_date_str,  # 발주일 추가
+                "qty": item.get("actual_qty", 0),
+                "price": item.get("actual_price", 0),
+            }
+        )
 for item in st.session_state.releases:
+    # 출고 날짜 처리: created_at이 있으면 날짜 부분만 추출, 없으면 오늘 날짜
+    release_date_str = item.get("date", "")
+    if not release_date_str and item.get("created_at"):
+        # created_at에서 날짜 부분만 추출 (YYYY-MM-DD HH:MM:SS -> YYYY-MM-DD)
+        created_at = item.get("created_at", "")
+        if created_at:
+            release_date_str = created_at.split(" ")[0] if " " in created_at else created_at
+    if not release_date_str:
+        # 날짜가 없으면 오늘 날짜 사용
+        release_date_str = date.today().strftime("%Y-%m-%d")
+    
     all_transactions.append(
         {
             **item,
             "transaction_type": "매출(출고)",
-            "transaction_date": item.get("date", ""),
+            "transaction_date": release_date_str,
             "qty": item.get("qty", 0),
             "price": item.get("price", 0),
             "actual_qty": item.get("qty", 0),
@@ -658,7 +756,8 @@ for item in st.session_state.releases:
 if len(all_transactions) == 0:
     st.warning("거래 내역이 없습니다. 거래명세서를 생성할 수 없습니다.")
 else:
-    # 간편 기간 설정
+    # 간편 기간 설정 (검색 폼 전에 실행하여 날짜를 미리 설정)
+    today = date.today()
     if "invoice_quick_period" in st.session_state:
         quick_period = st.session_state.invoice_quick_period
         if quick_period != "직접 선택":
@@ -666,7 +765,6 @@ else:
                 "invoice_quick_period_applied" not in st.session_state
                 or st.session_state.invoice_quick_period_applied != quick_period
             ):
-                today = date.today()
                 if quick_period == "이번 달":
                     st.session_state.invoice_start_date = today.replace(day=1)
                     st.session_state.invoice_end_date = today
@@ -734,6 +832,51 @@ else:
                 options=["직접 선택", "이번 달", "지난달", "올해", "이번 분기"],
                 key="invoice_quick_period",
             )
+            
+            # 간편 설정이 변경되면 날짜 자동 업데이트
+            if quick_period != "직접 선택":
+                today = date.today()
+                if quick_period == "이번 달":
+                    if st.session_state.invoice_start_date != today.replace(day=1) or \
+                       st.session_state.invoice_end_date != today:
+                        st.session_state.invoice_start_date = today.replace(day=1)
+                        st.session_state.invoice_end_date = today
+                        st.rerun()
+                elif quick_period == "지난달":
+                    if today.month == 1:
+                        last_month_start = date(today.year - 1, 12, 1)
+                        last_month_end = date(today.year - 1, 12, 31)
+                    else:
+                        last_month_start = date(today.year, today.month - 1, 1)
+                        if today.month - 1 in [1, 3, 5, 7, 8, 10, 12]:
+                            last_month_end = date(today.year, today.month - 1, 31)
+                        elif today.month - 1 in [4, 6, 9, 11]:
+                            last_month_end = date(today.year, today.month - 1, 30)
+                        else:
+                            if today.year % 4 == 0 and (today.year % 100 != 0 or today.year % 400 == 0):
+                                last_month_end = date(today.year, 2, 29)
+                            else:
+                                last_month_end = date(today.year, 2, 28)
+                    if st.session_state.invoice_start_date != last_month_start or \
+                       st.session_state.invoice_end_date != last_month_end:
+                        st.session_state.invoice_start_date = last_month_start
+                        st.session_state.invoice_end_date = last_month_end
+                        st.rerun()
+                elif quick_period == "올해":
+                    year_start = date(today.year, 1, 1)
+                    if st.session_state.invoice_start_date != year_start or \
+                       st.session_state.invoice_end_date != today:
+                        st.session_state.invoice_start_date = year_start
+                        st.session_state.invoice_end_date = today
+                        st.rerun()
+                elif quick_period == "이번 분기":
+                    quarter = (today.month - 1) // 3
+                    quarter_start = date(today.year, quarter * 3 + 1, 1)
+                    if st.session_state.invoice_start_date != quarter_start or \
+                       st.session_state.invoice_end_date != today:
+                        st.session_state.invoice_start_date = quarter_start
+                        st.session_state.invoice_end_date = today
+                        st.rerun()
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
@@ -765,19 +908,9 @@ else:
                 key="invoice_partner_select",
                 help="여러 거래처를 선택하려면 '전체 거래처'를 선택하세요.",
             )
-
-            if selected_partner_text == "전체 거래처":
-                selected_partner_codes = None
-            else:
-                selected_code = (
-                    selected_partner_text.split("(")[1].split(")")[0]
-                    if "(" in selected_partner_text
-                    else None
-                )
-                selected_partner_codes = [selected_code] if selected_code else None
         else:
             st.info("💡 거래처를 먼저 등록해주세요. (기본정보 > 목록보기 > 거래처 목록)")
-            selected_partner_codes = None
+            selected_partner_text = "전체 거래처"
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
@@ -813,64 +946,148 @@ else:
         search_submitted = st.form_submit_button(
             "🔍 조회하기", use_container_width=True, type="primary"
         )
+        
+        # 폼 안에서 검색 조건 저장
+        if search_submitted:
+            # 검색 조건을 세션 상태에 저장
+            st.session_state.invoice_search_start_date = start_date
+            st.session_state.invoice_search_end_date = end_date
+            st.session_state.invoice_search_partner = selected_partner_text if selected_partner_text else "전체 거래처"
+            st.session_state.invoice_search_transaction_type = transaction_type if transaction_type else "전체"
+            st.session_state.invoice_search_product = selected_product if selected_product else "전체 품목"
+            st.session_state.invoice_search_executed = True
+            st.rerun()
 
     # --------------------- 거래명세서 필터링 ---------------------
-    if search_submitted or "invoice_search_executed" not in st.session_state:
-        st.session_state.invoice_search_executed = True
+    # 검색 조건 초기화
+    if "invoice_partner_select" not in st.session_state:
+        st.session_state.invoice_partner_select = "전체 거래처"
+    if "invoice_transaction_type" not in st.session_state:
+        st.session_state.invoice_transaction_type = "전체"
+    if "invoice_product_select" not in st.session_state:
+        st.session_state.invoice_product_select = "전체 품목"
+    
+    # 검색 조건 가져오기 (검색 실행 여부와 관계없이 항상 가져오기)
+    start_date = st.session_state.get("invoice_search_start_date", st.session_state.get("invoice_start_date", date.today().replace(day=1)))
+    end_date = st.session_state.get("invoice_search_end_date", st.session_state.get("invoice_end_date", date.today()))
+    selected_partner_text = st.session_state.get("invoice_search_partner", st.session_state.get("invoice_partner_select", "전체 거래처"))
+    transaction_type = st.session_state.get("invoice_search_transaction_type", st.session_state.get("invoice_transaction_type", "전체"))
+    selected_product = st.session_state.get("invoice_search_product", st.session_state.get("invoice_product_select", "전체 품목"))
+    
+    # 검색이 실행되었을 때만 필터링 실행
+    if st.session_state.get("invoice_search_executed", False):
+        filtered_transactions = []
+        
+        # 거래처 코드 및 이름 추출
+        selected_partner_codes = None
+        partner_name_only = None
+        if selected_partner_text and selected_partner_text != "전체 거래처":
+            if "(" in selected_partner_text and ")" in selected_partner_text:
+                selected_code = selected_partner_text.split("(")[1].split(")")[0]
+                if selected_code:
+                    selected_partner_codes = [selected_code]
+            partner_name_only = selected_partner_text.split("(")[0].strip() if "(" in selected_partner_text else selected_partner_text.strip()
 
-        filtered_transactions = list(all_transactions)
-
-        if start_date and end_date:
-            tmp = []
-            for t in filtered_transactions:
+        # 모든 거래 내역을 순회하며 필터링
+        for t in all_transactions:
+            # 1단계: 거래 구분 필터링
+            if transaction_type and transaction_type != "전체":
+                if t.get("transaction_type") != transaction_type:
+                    continue
+            
+            # 2단계: 날짜 필터링 (기간 설정이 있으면 반드시 확인)
+            if start_date and end_date:
                 trans_date_str = t.get("transaction_date")
-                if trans_date_str:
-                    try:
-                        trans_date = datetime.strptime(
-                            trans_date_str, "%Y-%m-%d"
-                        ).date()
-                        if start_date <= trans_date <= end_date:
-                            tmp.append(t)
-                    except:
-                        pass
-            filtered_transactions = tmp
+                if not trans_date_str:
+                    continue
+                     
+                try:
+                    # 날짜 문자열을 date 객체로 변환
+                    trans_date = None
+                    if isinstance(trans_date_str, date):
+                        trans_date = trans_date_str
+                    elif isinstance(trans_date_str, str):
+                        trans_date_str_clean = trans_date_str.strip()
+                        if len(trans_date_str_clean) >= 10:
+                            date_part = trans_date_str_clean[:10]
+                            trans_date = datetime.strptime(date_part, "%Y-%m-%d").date()
+                        else:
+                            continue
+                    else:
+                        continue
+                     
+                    # 날짜 범위 확인 (시작일 <= 거래일 <= 종료일)
+                    if not trans_date:
+                        continue
+                    if not (start_date <= trans_date <= end_date):
+                        continue
+                except Exception as e:
+                    continue
+            
+            # 3단계: 거래처 필터링 (거래처가 선택되었으면 반드시 확인)
+            if selected_partner_text and selected_partner_text != "전체 거래처":
+                partner_raw = t.get("partner")
+                if not partner_raw:
+                    continue
+                     
+                partner = ensure_partner_dict(partner_raw)
+                if not partner:
+                    continue
+                     
+                partner_code = get_partner_code(partner)
+                partner_name = get_partner_name(partner)
+                 
+                # 거래처 코드 또는 이름으로 매칭
+                code_match = False
+                name_match = False
+                 
+                if selected_partner_codes and partner_code:
+                    code_match = partner_code in selected_partner_codes
+                 
+                if partner_name_only and partner_name:
+                    # 공백 제거 후 비교
+                    search_name_clean = partner_name_only.replace(" ", "").replace("　", "").strip()
+                    partner_name_clean = partner_name.replace(" ", "").replace("　", "").strip()
+                    # 정확한 매칭 또는 부분 매칭
+                    name_match = (partner_name.strip() == partner_name_only.strip() or 
+                                 partner_name_clean == search_name_clean or
+                                 partner_name_clean.startswith(search_name_clean) or
+                                 search_name_clean.startswith(partner_name_clean))
+                 
+                if not (code_match or name_match):
+                    continue
 
-        if selected_partner_codes is not None:
-            filtered_transactions = [
-                t
-                for t in filtered_transactions
-                if get_partner_code(ensure_partner_dict(t.get("partner")))
-                in selected_partner_codes
-            ]
+            # 4단계: 품목 필터링
+            if selected_product and selected_product != "전체 품목":
+                if t.get("product_name") != selected_product:
+                    continue
 
-        if transaction_type == "매입(입고)":
-            filtered_transactions = [
-                t
-                for t in filtered_transactions
-                if t.get("transaction_type") == "매입(입고)"
-            ]
-        elif transaction_type == "매출(출고)":
-            filtered_transactions = [
-                t
-                for t in filtered_transactions
-                if t.get("transaction_type") == "매출(출고)"
-            ]
+            # 모든 필터 조건을 통과한 거래만 추가
+            filtered_transactions.append(t)
 
-        if selected_product != "전체 품목":
-            filtered_transactions = [
-                t
-                for t in filtered_transactions
-                if t.get("product_name") == selected_product
-            ]
-
+        # 필터링 결과 저장
         st.session_state.filtered_invoice_transactions = filtered_transactions
     else:
+        # 처음 페이지 로드 시 또는 검색이 실행되지 않았을 때 전체 표시
+        if "filtered_invoice_transactions" not in st.session_state:
+            st.session_state.filtered_invoice_transactions = list(all_transactions)
+    
+    # 필터링된 거래 내역 가져오기
+    if st.session_state.get("invoice_search_executed", False):
+        # 검색이 실행되었을 때는 필터링된 결과 사용
         filtered_transactions = st.session_state.get(
             "filtered_invoice_transactions", []
         )
-
+    else:
+        # 검색이 실행되지 않았을 때는 전체 거래 내역 표시
+        filtered_transactions = list(all_transactions)
+    
+    # 검색 결과 표시
     if len(filtered_transactions) == 0:
-        st.warning("검색 조건에 맞는 거래 내역이 없습니다.")
+        if st.session_state.get("invoice_search_executed", False):
+            st.warning("검색 조건에 맞는 거래 내역이 없습니다.")
+        else:
+            st.info("검색 조건을 설정하고 조회하기 버튼을 눌러주세요.")
     else:
         st.success(f"검색 결과: {len(filtered_transactions)}건")
 
